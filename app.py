@@ -31,8 +31,8 @@ if "servico_preselecionado" not in st.session_state:
     st.session_state["servico_preselecionado"] = None
 if "scroll_para_agendamento" not in st.session_state:
     st.session_state["scroll_para_agendamento"] = False
-if "ultimo_protocolo" not in st.session_state:
-    st.session_state["ultimo_protocolo"] = None
+if "sucesso_solicitacao" not in st.session_state:
+    st.session_state["sucesso_solicitacao"] = None
 
 # =======================================================
 # CSS VISUAL: ROXO LUXO & BOTÕES MODERNOS
@@ -116,26 +116,13 @@ st.markdown("""
         color: #581c87;
         margin: 10px 0;
     }
-    .protocolo-card {
-        background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
-        border: 2px dashed #8b5cf6;
+    .confirmacao-solicitacao-card {
+        background: #f5f3ff;
+        border: 2px solid #c4b5fd;
         border-radius: 16px;
         padding: 22px 26px;
         margin: 20px 0;
         text-align: center;
-    }
-    .protocolo-badge {
-        font-family: monospace;
-        font-size: 24px;
-        font-weight: 700;
-        color: #581c87;
-        letter-spacing: 2px;
-        background: #ffffff;
-        padding: 6px 18px;
-        border-radius: 10px;
-        border: 1px solid #c4b5fd;
-        display: inline-block;
-        margin-top: 8px;
     }
     .metric-box {
         background: #ffffff;
@@ -213,7 +200,7 @@ DIAS_SEMANA_NOMES = {
 }
 
 def gerar_protocolo(agendamento_id: int, data_str: str) -> str:
-    """Gera um número de protocolo formal: BA-AAAAMMDD-XXXX"""
+    """Gera o protocolo no formato BA-AAAAMMDD-XXXX"""
     dt_limpa = data_str[:10].replace("-", "")
     return f"BA-{dt_limpa}-{int(agendamento_id):04d}"
 
@@ -293,20 +280,16 @@ if aba_selecionada == "✨ Início & Agendamento":
         """, height=0, width=0)
         st.session_state["scroll_para_agendamento"] = False
 
-    # CARD DE CONFIRMAÇÃO DE PROTOCOLO APÓS AGENDAMENTO
-    if st.session_state["ultimo_protocolo"]:
-        p = st.session_state["ultimo_protocolo"]
+    # AVISO DE CONFIRMAÇÃO PARA A CLIENTE (SEM O NÚMERO DO PROTOCOLO)
+    if st.session_state.get("sucesso_solicitacao"):
+        s = st.session_state["sucesso_solicitacao"]
         st.markdown(f"""
-            <div class="protocolo-card">
-                <div style="font-size: 28px; margin-bottom: 6px;">🎉</div>
-                <h3 style="color: #4c1d95; margin: 0;">Solicitação Registrada com Sucesso!</h3>
-                <p style="color: #6b21a8; font-size: 15px; margin: 6px 0 10px 0;">
-                    Olá, <b>{p['nome']}</b>! Seu pedido foi encaminhado para a administração. Guarde seu comprovante:
-                </p>
-                <div>Número do Protocolo:</div>
-                <div class="protocolo-badge">{p['protocolo']}</div>
-                <p style="font-size: 13px; color: #7c3aed; margin-top: 10px;">
-                    💅 <b>{p['servico']}</b> • 📅 <b>{p['data_hora']}</b>
+            <div class="confirmacao-solicitacao-card">
+                <div style="font-size: 30px; margin-bottom: 6px;">✨</div>
+                <h3 style="color: #4c1d95; margin: 0;">Solicitação Enviada com Sucesso!</h3>
+                <p style="color: #6b21a8; font-size: 15px; margin: 8px 0 0 0;">
+                    Olá, <b>{s['nome']}</b>! Seu pedido de agendamento para <b>{s['servico']}</b> em <b>{s['data_hora']}</b> foi registrado.<br>
+                    A administração analisará a disponibilidade e enviará a <b>confirmação oficial no seu WhatsApp</b>.
                 </p>
             </div>
         """, unsafe_allow_html=True)
@@ -452,7 +435,7 @@ if aba_selecionada == "✨ Início & Agendamento":
 
                     data_hora_final = f"{data_selecionada.strftime('%Y-%m-%d')} {horario_selecionado}:00"
 
-                    res_ins = supabase.table("agendamentos").insert({
+                    supabase.table("agendamentos").insert({
                         "cliente_id": cliente_id,
                         "servico_id": srv_obj["id"],
                         "data_hora": data_hora_final,
@@ -460,17 +443,14 @@ if aba_selecionada == "✨ Início & Agendamento":
                         "observacoes": observacao.strip()
                     }).execute()
 
-                    novo_id = res_ins.data[0]["id"] if res_ins.data else 1
-                    num_protocolo = gerar_protocolo(novo_id, str(data_selecionada))
-
-                    st.session_state["ultimo_protocolo"] = {
-                        "protocolo": num_protocolo,
+                    # Armazena na sessão a confirmação para a cliente
+                    st.session_state["sucesso_solicitacao"] = {
                         "nome": nome_c.strip(),
                         "servico": srv_obj["nome_servico"],
                         "data_hora": f"{data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado}"
                     }
 
-                    st.toast(f"Solicitação enviada! Protocolo: {num_protocolo}")
+                    st.toast("Solicitação enviada com sucesso!")
                     st.rerun()
 
 # =======================================================
@@ -650,7 +630,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
             st.divider()
 
-            # DISPARO DE WHATSAPP COM PROTOCOLO INCLUSO
+            # DISPARO DE WHATSAPP (ONDE O PROTOCOLO APARECE EXCLUSIVAMENTE)
             if "confirmacao_pendente" in st.session_state and st.session_state["confirmacao_pendente"]:
                 d = st.session_state["confirmacao_pendente"]
                 msg_conf = (
@@ -666,7 +646,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                     <div style="background: #f0fdf4; border: 2px solid #86efac; border-radius: 16px; padding: 18px; margin-bottom: 20px;">
                         <h4 style="color: #15803d; margin: 0 0 6px 0;">🎉 Horário de {d['nome']} Aprovado!</h4>
                         <div style="font-size: 14px; color: #166534; margin-bottom: 10px;">
-                            Protocolo: <b>{d['protocolo']}</b>
+                            Protocolo gerado: <b>{d['protocolo']}</b>
                         </div>
                     </div>
                 """, unsafe_allow_html=True)
