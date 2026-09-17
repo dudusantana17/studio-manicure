@@ -31,6 +31,8 @@ if "servico_preselecionado" not in st.session_state:
     st.session_state["servico_preselecionado"] = None
 if "scroll_para_agendamento" not in st.session_state:
     st.session_state["scroll_para_agendamento"] = False
+if "scroll_para_topo" not in st.session_state:
+    st.session_state["scroll_para_topo"] = False
 
 # =======================================================
 # CSS VISUAL: ROXO LUXO & POP-UP EM DESTAQUE
@@ -183,6 +185,15 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# SCRIPT DE ROLAGEM PARA O TOPO DA PÁGINA
+if st.session_state.get("scroll_para_topo", False):
+    components.html("""
+        <script>
+            window.parent.scrollTo({ top: 0, behavior: 'smooth' });
+        </script>
+    """, height=0, width=0)
+    st.session_state["scroll_para_topo"] = False
+
 # NAVBAR
 st.markdown("""
     <div class="site-nav">
@@ -225,12 +236,13 @@ def exibir_modal_confirmacao(nome, servico, data_hora):
             </p>
             <div class="modal-detalhe">
                 <p style="margin: 0; font-size: 14px; color: #6b21a8;">
-                    💬 <b>Próximo Passo:</b> A administração acabou de receber seu pedido e você receberá a <b>confirmação oficial junto com o seu comprovante/protocolo diretamente no seu WhatsApp</b>.
+                    💬 <b>Próximo Passo:</b> A administração acabou de receber seu pedido e enviará a <b>confirmação oficial junto com o seu protocolo diretamente no seu WhatsApp</b>.
                 </p>
             </div>
         </div>
     """, unsafe_allow_html=True)
     if st.button("Entendido, fechar aviso!", use_container_width=True):
+        st.session_state["scroll_para_topo"] = True
         st.rerun()
 
 opcoes_menu = ["✨ Início & Agendamento", "🎓 Academy (Cursos)", "🔐 Acesso Gestora"]
@@ -351,7 +363,12 @@ if aba_selecionada == "✨ Início & Agendamento":
                 srv_obj = map_nomes[srv_escolhido_str]
                 duracao_escolhida = int(srv_obj["duracao_minutos"])
 
-                data_selecionada = st.date_input("Dia do Atendimento:", min_value=datetime.today())
+                # Calendário com padrão brasileiro DD/MM/YYYY
+                data_selecionada = st.date_input(
+                    "Dia do Atendimento:",
+                    min_value=datetime.today(),
+                    format="DD/MM/YYYY"
+                )
                 dia_da_semana = data_selecionada.weekday()
                 mes_escolhido_str = data_selecionada.strftime("%Y-%m")
 
@@ -429,7 +446,13 @@ if aba_selecionada == "✨ Início & Agendamento":
                     nome_c = st.text_input("Seu Nome Completo:")
                     tel_c = st.text_input("WhatsApp (DDD + Número):", placeholder="Ex: 71999999999")
                 with col_c2:
-                    nasc_c = st.date_input("Data de Nascimento:", value=datetime(2000, 1, 1), min_value=datetime(1940, 1, 1))
+                    # Calendário com padrão brasileiro DD/MM/YYYY
+                    nasc_c = st.date_input(
+                        "Data de Nascimento:",
+                        value=datetime(2000, 1, 1),
+                        min_value=datetime(1940, 1, 1),
+                        format="DD/MM/YYYY"
+                    )
                     observacao = st.text_area("Observações (opcional):", placeholder="Ex: Alongamento inicial...")
 
                 btn_agendar = st.form_submit_button("Confirmar Reserva de Horário ✨", use_container_width=True)
@@ -639,7 +662,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
             st.divider()
 
-            # DISPARO DE WHATSAPP (ONDE O PROTOCOLO APARECE NA CONFIRMAÇÃO DA GESTORA)
+            # DISPARO DE WHATSAPP (ONDE O PROTOCOLO APARECE EXCLUSIVAMENTE)
             if "confirmacao_pendente" in st.session_state and st.session_state["confirmacao_pendente"]:
                 d = st.session_state["confirmacao_pendente"]
                 msg_conf = (
