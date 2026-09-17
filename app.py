@@ -188,7 +188,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# EXECUÇÃO DA ROLAGEM PARA O TOPO (CASO ATIVADA)
+# EXECUÇÃO DA ROLAGEM PARA O TOPO
 if st.session_state.get("scroll_para_topo", False):
     components.html("""
         <script>
@@ -232,12 +232,11 @@ DIAS_SEMANA_NOMES = {
 }
 
 def gerar_protocolo(agendamento_id: int, data_str: str) -> str:
-    """Gera o protocolo no formato BA-AAAAMMDD-XXXX"""
     dt_limpa = data_str[:10].replace("-", "")
     return f"BA-{dt_limpa}-{int(agendamento_id):04d}"
 
 # =======================================================
-# POP-UP / MODAL EM PRIMEIRO PLANO NA FRENTE DA TELA
+# POP-UP / MODAL EM DESTAQUE NA TELA
 # =======================================================
 @st.dialog("✨ Solicitação Enviada!")
 def exibir_modal_confirmacao(nome, servico, data_hora):
@@ -256,7 +255,6 @@ def exibir_modal_confirmacao(nome, servico, data_hora):
         </div>
     """, unsafe_allow_html=True)
     
-    # Ao clicar em fechar, roda o script diretamente antes do rerun
     if st.button("Entendido, fechar aviso!", use_container_width=True):
         components.html("""
             <script>
@@ -689,7 +687,6 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
             st.divider()
 
-            # DISPARO DE WHATSAPP (ONDE O PROTOCOLO APARECE EXCLUSIVAMENTE)
             if "confirmacao_pendente" in st.session_state and st.session_state["confirmacao_pendente"]:
                 d = st.session_state["confirmacao_pendente"]
                 msg_conf = (
@@ -764,12 +761,12 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                         with btn2:
                             if st.button("Recusar", key=f"rec_{ag_id}", use_container_width=True):
                                 supabase.table("agendamentos").update({"status": "Cancelado"}).eq("id", ag_id).execute()
-                                st.toast("Agendamento recusado!")
+                                st.toast("Agendamento recusado e horário liberado!")
                                 st.rerun()
                     st.write("")
 
             st.divider()
-            st.markdown("#### ✅ Horários Confirmados (Finalizar)")
+            st.markdown("#### ✅ Horários Confirmados (Atendimentos Agendados)")
             try:
                 res_confirmados = supabase.table("agendamentos").select(
                     "id, data_hora, servicos(nome_servico), clientes(nome)"
@@ -782,7 +779,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                 st.caption("Nenhum atendimento confirmado aguardando realização.")
             else:
                 for conf in confirmados:
-                    c1_c, c2_c = st.columns([4, 1])
+                    c1_c, c2_c, c3_c = st.columns([4, 1.2, 1.2])
                     c_nome = conf["clientes"]["nome"] if conf.get("clientes") else "Cliente"
                     s_nome = conf["servicos"]["nome_servico"] if conf.get("servicos") else "Procedimento"
                     dh_txt = conf["data_hora"][:16].replace("T", " ")
@@ -793,6 +790,11 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                         if st.button("Concluir", key=f"conc_{conf['id']}", use_container_width=True):
                             supabase.table("agendamentos").update({"status": "Concluído"}).eq("id", conf["id"]).execute()
                             st.toast("Marcado como Concluído!")
+                            st.rerun()
+                    with c3_c:
+                        if st.button("Desmarcar", key=f"desm_{conf['id']}", use_container_width=True, help="Cancela e libera o horário imediatamente na grade pública"):
+                            supabase.table("agendamentos").update({"status": "Cancelado"}).eq("id", conf["id"]).execute()
+                            st.toast("Horário desmarcado e liberado na agenda!")
                             st.rerun()
 
         # SUB-ABA 2: GERENCIAR SERVIÇOS
