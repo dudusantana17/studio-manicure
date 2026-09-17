@@ -255,17 +255,20 @@ elif aba_selecionada == "💅 Serviços & Valores":
     res_srv = supabase.table("servicos").select("*").execute()
     servicos = res_srv.data if res_srv.data else []
 
-    cols = st.columns(len(servicos) if len(servicos) > 0 else 1)
-    for idx, srv in enumerate(servicos):
-        with cols[idx]:
-            st.markdown(f"""
-                <div class="site-card">
-                    <span style="font-size: 12px; font-weight: 700; color: #7e22ce; background: #faf5ff; padding: 4px 10px; border-radius: 12px;">⏱ {srv['duracao_minutos']} Minutos</span>
-                    <h3>{srv['nome_servico']}</h3>
-                    <p style="font-size: 14px; color: #6b21a8;">Higienização profunda, acabamento refinado e top coat de alto brilho.</p>
-                    <div class="card-price-value">R$ {float(srv['preco']):.2f}</div>
-                </div>
-            """, unsafe_allow_html=True)
+    if not servicos:
+        st.info("Nenhum serviço cadastrado no momento.")
+    else:
+        cols = st.columns(len(servicos))
+        for idx, srv in enumerate(servicos):
+            with cols[idx]:
+                st.markdown(f"""
+                    <div class="site-card">
+                        <span style="font-size: 12px; font-weight: 700; color: #7e22ce; background: #faf5ff; padding: 4px 10px; border-radius: 12px;">⏱ {srv['duracao_minutos']} Minutos</span>
+                        <h3>{srv['nome_servico']}</h3>
+                        <p style="font-size: 14px; color: #6b21a8;">Higienização profunda, acabamento refinado e top coat de alto brilho.</p>
+                        <div class="card-price-value">R$ {float(srv['preco']):.2f}</div>
+                    </div>
+                """, unsafe_allow_html=True)
 
 # =======================================================
 # 3. CURSOS & TURMAS
@@ -347,7 +350,7 @@ elif aba_selecionada == "📅 Agendar Horário":
     status_agenda = dict_conf.get("agenda_status", "Aberta")
     meses_liberados_str = dict_conf.get("mes_liberado", "2026-09,2026-10")
     meses_liberados_lista = [m.strip() for m in meses_liberados_str.split(",") if m.strip()]
-    dias_func_str = dict_conf.get("dias_funcionamento", "1,2,3,4,5") # padrão: Terça a Sábado
+    dias_func_str = dict_conf.get("dias_funcionamento", "1,2,3,4,5")  # Padrão: Terça a Sábado
     dias_func_lista = [int(d.strip()) for d in dias_func_str.split(",") if d.strip()]
 
     st.markdown("### 📅 Solicitação de Agendamento Online")
@@ -355,7 +358,6 @@ elif aba_selecionada == "📅 Agendar Horário":
     if status_agenda == "Fechada":
         st.warning("🔒 Nossa agenda de atendimentos está temporariamente fechada para novos horários online.")
     else:
-        # Formatar nomes dos meses liberados para visualização amigável
         nomes_meses_pt = {
             "01": "Janeiro", "02": "Fevereiro", "03": "Março", "04": "Abril",
             "05": "Maio", "06": "Junho", "07": "Julho", "08": "Agosto",
@@ -378,32 +380,38 @@ elif aba_selecionada == "📅 Agendar Horário":
 
         with col_esq:
             st.markdown("#### 1. Procedimento & Data")
-            opcoes_servicos = {
-                f"{s['nome_servico']} — R$ {float(s['preco']):.2f} ({s['duracao_minutos']} min)": s
-                for s in servicos
-            }
-            srv_selecionado_str = st.selectbox("Selecione o Procedimento:", list(opcoes_servicos.keys()))
-            srv_obj = opcoes_servicos[srv_selecionado_str]
-            duracao_escolhida = int(srv_obj["duracao_minutos"])
+            if not servicos:
+                st.warning("⚠️ Nenhum serviço cadastrado no momento. Cadastre os procedimentos no banco para habilitar agendamentos.")
+                srv_obj = None
+                duracao_escolhida = 60
+                data_selecionada = datetime.today().date()
+                dia_da_semana = data_selecionada.weekday()
+                mes_escolhido_str = data_selecionada.strftime("%Y-%m")
+            else:
+                opcoes_servicos = {
+                    f"{s['nome_servico']} — R$ {float(s['preco']):.2f} ({s['duracao_minutos']} min)": s
+                    for s in servicos
+                }
+                srv_selecionado_str = st.selectbox("Selecione o Procedimento:", list(opcoes_servicos.keys()))
+                srv_obj = opcoes_servicos.get(srv_selecionado_str)
+                duracao_escolhida = int(srv_obj["duracao_minutos"]) if srv_obj else 60
 
-            data_selecionada = st.date_input("Selecione o Dia Desejado:", min_value=datetime.today())
-            dia_da_semana = data_selecionada.weekday() # 0 = Segunda, 6 = Domingo
-            mes_escolhido_str = data_selecionada.strftime("%Y-%m")
+                data_selecionada = st.date_input("Selecione o Dia Desejado:", min_value=datetime.today())
+                dia_da_semana = data_selecionada.weekday()
+                mes_escolhido_str = data_selecionada.strftime("%Y-%m")
 
         with col_dir:
             st.markdown("#### 2. Horários Livres Disponíveis")
             horario_valido = False
             horario_selecionado = None
 
-            # Validação do Mês
-            if mes_escolhido_str not in meses_liberados_lista:
+            if not servicos or srv_obj is None:
+                st.info("Aguardando cadastro de procedimentos...")
+            elif mes_escolhido_str not in meses_liberados_lista:
                 st.error(f"⛔ Data indisponível. A agenda está liberada apenas para: **{legenda_str}**.")
-            # Validação do Dia de Funcionamento
             elif dia_da_semana not in dias_func_lista:
-                st.warning(f"🏖️ O Studio não funciona às {DIAS_SEMANA_NOMES[dia_da_semana]}s. Por favor, selecione outro dia.")
+                st.warning(f"🏖️ O Studio não funciona às {DIAS_SEMANA_NOMES.get(dia_da_semana, '')}s. Por favor, selecione outro dia.")
             else:
-                # CÁLCULO DINÂMICO DE HORÁRIOS LIVRES
-                # 1. Buscar agendamentos existentes no dia que não estejam cancelados
                 data_inicio_dia = f"{data_selecionada.strftime('%Y-%m-%d')} 00:00:00"
                 data_fim_dia = f"{data_selecionada.strftime('%Y-%m-%d')} 23:59:59"
 
@@ -421,7 +429,6 @@ elif aba_selecionada == "📅 Agendar Horário":
                     dt_fim = dt_inicio + timedelta(minutes=int(dur_oc))
                     intervalos_ocupados.append((dt_inicio.time(), dt_fim.time()))
 
-                # 2. Gerar slots possíveis do dia (expediente: 08:00 às 18:00)
                 grade_base = [
                     time(8, 0), time(9, 0), time(10, 0), time(11, 0),
                     time(13, 0), time(14, 0), time(15, 0), time(16, 0), time(17, 0)
@@ -434,23 +441,19 @@ elif aba_selecionada == "📅 Agendar Horário":
                     inicio_slot = datetime.combine(data_selecionada, slot)
                     fim_slot = inicio_slot + timedelta(minutes=duracao_escolhida)
 
-                    # Verificar se ultrapassa o expediente
                     if fim_slot.time() > hora_limite_studio:
                         continue
 
-                    # Verificar se colide com algum agendamento existente
                     colisao = False
                     for oc_ini, oc_fim in intervalos_ocupados:
                         oc_ini_dt = datetime.combine(data_selecionada, oc_ini)
                         oc_fim_dt = datetime.combine(data_selecionada, oc_fim)
 
-                        # Condição de sobreposição: (InicioA < FimB) e (FimA > InicioB)
                         if (inicio_slot < oc_fim_dt) and (fim_slot > oc_ini_dt):
                             colisao = True
                             break
 
                     if not colisao:
-                        # Se o dia for hoje, não exibir horários que já passaram
                         if data_selecionada == datetime.today().date() and slot <= datetime.now().time():
                             continue
                         horarios_disponiveis.append(slot.strftime("%H:%M"))
@@ -463,8 +466,7 @@ elif aba_selecionada == "📅 Agendar Horário":
 
         st.divider()
 
-        # FORMULÁRIO DE DADOS DA CLIENTE
-        if horario_valido and horario_selecionado:
+        if horario_valido and horario_selecionado and srv_obj:
             st.markdown("#### 3. Seus Dados para Reserva")
             with st.form("form_confirmacao_final"):
                 col_c1, col_c2 = st.columns(2)
@@ -482,7 +484,6 @@ elif aba_selecionada == "📅 Agendar Horário":
                 if not nome_c.strip() or len(tel_limpo) < 10:
                     st.error("Informe seu nome e WhatsApp válido com DDD.")
                 else:
-                    # Upsert cliente
                     supabase.table("clientes").upsert({
                         "nome": nome_c.strip(),
                         "telefone": tel_limpo,
@@ -543,7 +544,9 @@ elif aba_selecionada == "🔐 Acesso Gestora":
         # SUB-ABA 1: FATURAMENTO
         with adm1:
             st.markdown("#### 📈 Balanço de Atendimentos e Faturamento")
-            res_concluidos = supabase.table("agendamentos").select("id, data_hora, servicos(nome_servico, preco), clientes(nome)").eq("status", "Concluído").execute()
+            res_concluidos = supabase.table("agendamentos").select(
+                "id, data_hora, servicos(nome_servico, preco), clientes(nome)"
+            ).eq("status", "Concluído").execute()
             lista_concluidos = res_concluidos.data if res_concluidos.data else []
 
             if not lista_concluidos:
@@ -598,7 +601,6 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                     st.rerun()
 
             with col_cf2:
-                # SELEÇÃO DE MÚLTIPLOS MESES LIBERADOS
                 meses_atuais_str = dict_conf.get("mes_liberado", "2026-09,2026-10")
                 meses_atuais_lista = [m.strip() for m in meses_atuais_str.split(",") if m.strip()]
 
@@ -624,7 +626,6 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                     st.toast("Meses liberados atualizados!")
                     st.rerun()
 
-            # SELEÇÃO DE DIAS DE FUNCIONAMENTO
             st.write("")
             dias_atuais_str = dict_conf.get("dias_funcionamento", "1,2,3,4,5")
             dias_atuais_lista = [int(d.strip()) for d in dias_atuais_str.split(",") if d.strip()]
