@@ -31,11 +31,9 @@ if "servico_preselecionado" not in st.session_state:
     st.session_state["servico_preselecionado"] = None
 if "scroll_para_agendamento" not in st.session_state:
     st.session_state["scroll_para_agendamento"] = False
-if "sucesso_solicitacao" not in st.session_state:
-    st.session_state["sucesso_solicitacao"] = None
 
 # =======================================================
-# CSS VISUAL: ROXO LUXO & BOTÕES MODERNOS
+# CSS VISUAL: ROXO LUXO & POP-UP EM DESTAQUE
 # =======================================================
 st.markdown("""
     <style>
@@ -116,13 +114,22 @@ st.markdown("""
         color: #581c87;
         margin: 10px 0;
     }
-    .confirmacao-solicitacao-card {
-        background: #f5f3ff;
-        border: 2px solid #c4b5fd;
-        border-radius: 16px;
-        padding: 22px 26px;
-        margin: 20px 0;
+    .modal-sucesso-box {
         text-align: center;
+        padding: 10px;
+    }
+    .modal-sucesso-box h2 {
+        font-family: 'Playfair Display', serif;
+        color: #4c1d95;
+        margin-top: 10px;
+    }
+    .modal-detalhe {
+        background: #faf5ff;
+        border: 1px solid #e9d5ff;
+        border-radius: 12px;
+        padding: 16px;
+        margin: 18px 0;
+        text-align: left;
     }
     .metric-box {
         background: #ffffff;
@@ -204,6 +211,28 @@ def gerar_protocolo(agendamento_id: int, data_str: str) -> str:
     dt_limpa = data_str[:10].replace("-", "")
     return f"BA-{dt_limpa}-{int(agendamento_id):04d}"
 
+# =======================================================
+# POP-UP / MODAL EM PRIMEIRO PLANO NA FRENTE DA TELA
+# =======================================================
+@st.dialog("✨ Solicitação Enviada!")
+def exibir_modal_confirmacao(nome, servico, data_hora):
+    st.markdown(f"""
+        <div class="modal-sucesso-box">
+            <div style="font-size: 42px;">📲</div>
+            <h2>Pedido Recebido com Sucesso!</h2>
+            <p style="font-size: 15px; color: #4c1d95; line-height: 1.6;">
+                Olá, <b>{nome}</b>! Sua solicitação para <b>{servico}</b> em <b>{data_hora}</b> foi registrada no nosso sistema.
+            </p>
+            <div class="modal-detalhe">
+                <p style="margin: 0; font-size: 14px; color: #6b21a8;">
+                    💬 <b>Próximo Passo:</b> A administração acabou de receber seu pedido e você receberá a <b>confirmação oficial junto com o seu comprovante/protocolo diretamente no seu WhatsApp</b>.
+                </p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    if st.button("Entendido, fechar aviso!", use_container_width=True):
+        st.rerun()
+
 opcoes_menu = ["✨ Início & Agendamento", "🎓 Academy (Cursos)", "🔐 Acesso Gestora"]
 aba_selecionada = st.radio(
     "Navegação",
@@ -279,20 +308,6 @@ if aba_selecionada == "✨ Início & Agendamento":
             </script>
         """, height=0, width=0)
         st.session_state["scroll_para_agendamento"] = False
-
-    # AVISO DE CONFIRMAÇÃO PARA A CLIENTE (SEM O NÚMERO DO PROTOCOLO)
-    if st.session_state.get("sucesso_solicitacao"):
-        s = st.session_state["sucesso_solicitacao"]
-        st.markdown(f"""
-            <div class="confirmacao-solicitacao-card">
-                <div style="font-size: 30px; margin-bottom: 6px;">✨</div>
-                <h3 style="color: #4c1d95; margin: 0;">Solicitação Enviada com Sucesso!</h3>
-                <p style="color: #6b21a8; font-size: 15px; margin: 8px 0 0 0;">
-                    Olá, <b>{s['nome']}</b>! Seu pedido de agendamento para <b>{s['servico']}</b> em <b>{s['data_hora']}</b> foi registrado.<br>
-                    A administração analisará a disponibilidade e enviará a <b>confirmação oficial no seu WhatsApp</b>.
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
 
     if status_agenda == "Fechada":
         st.warning("🔒 Nossa agenda de atendimentos está temporariamente fechada para novos horários online.")
@@ -443,15 +458,9 @@ if aba_selecionada == "✨ Início & Agendamento":
                         "observacoes": observacao.strip()
                     }).execute()
 
-                    # Armazena na sessão a confirmação para a cliente
-                    st.session_state["sucesso_solicitacao"] = {
-                        "nome": nome_c.strip(),
-                        "servico": srv_obj["nome_servico"],
-                        "data_hora": f"{data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado}"
-                    }
-
-                    st.toast("Solicitação enviada com sucesso!")
-                    st.rerun()
+                    # Abre o Pop-up na frente da tela
+                    data_hora_str = f"{data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado}"
+                    exibir_modal_confirmacao(nome_c.strip(), srv_obj["nome_servico"], data_hora_str)
 
 # =======================================================
 # 2. ACADEMY (CURSOS)
@@ -630,7 +639,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
             st.divider()
 
-            # DISPARO DE WHATSAPP (ONDE O PROTOCOLO APARECE EXCLUSIVAMENTE)
+            # DISPARO DE WHATSAPP (ONDE O PROTOCOLO APARECE NA CONFIRMAÇÃO DA GESTORA)
             if "confirmacao_pendente" in st.session_state and st.session_state["confirmacao_pendente"]:
                 d = st.session_state["confirmacao_pendente"]
                 msg_conf = (
