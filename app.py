@@ -31,6 +31,8 @@ if "servico_preselecionado" not in st.session_state:
     st.session_state["servico_preselecionado"] = None
 if "scroll_para_agendamento" not in st.session_state:
     st.session_state["scroll_para_agendamento"] = False
+if "ultimo_protocolo" not in st.session_state:
+    st.session_state["ultimo_protocolo"] = None
 
 # =======================================================
 # CSS VISUAL: ROXO LUXO & BOTÕES MODERNOS
@@ -114,6 +116,27 @@ st.markdown("""
         color: #581c87;
         margin: 10px 0;
     }
+    .protocolo-card {
+        background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+        border: 2px dashed #8b5cf6;
+        border-radius: 16px;
+        padding: 22px 26px;
+        margin: 20px 0;
+        text-align: center;
+    }
+    .protocolo-badge {
+        font-family: monospace;
+        font-size: 24px;
+        font-weight: 700;
+        color: #581c87;
+        letter-spacing: 2px;
+        background: #ffffff;
+        padding: 6px 18px;
+        border-radius: 10px;
+        border: 1px solid #c4b5fd;
+        display: inline-block;
+        margin-top: 8px;
+    }
     .metric-box {
         background: #ffffff;
         border-radius: 16px;
@@ -189,6 +212,11 @@ DIAS_SEMANA_NOMES = {
     6: "Domingo"
 }
 
+def gerar_protocolo(agendamento_id: int, data_str: str) -> str:
+    """Gera um número de protocolo formal: BA-AAAAMMDD-XXXX"""
+    dt_limpa = data_str[:10].replace("-", "")
+    return f"BA-{dt_limpa}-{int(agendamento_id):04d}"
+
 opcoes_menu = ["✨ Início & Agendamento", "🎓 Academy (Cursos)", "🔐 Acesso Gestora"]
 aba_selecionada = st.radio(
     "Navegação",
@@ -251,11 +279,9 @@ if aba_selecionada == "✨ Início & Agendamento":
 
     st.divider()
 
-    # Âncora visual de destino
     st.markdown('<div id="area-agendamento"></div>', unsafe_allow_html=True)
     st.markdown("### 📅 Escolha a Sua Data & Horário")
 
-    # Script para rolar suavemente até o agendamento se o botão do card foi clicado
     if st.session_state.get("scroll_para_agendamento", False):
         components.html("""
             <script>
@@ -267,6 +293,24 @@ if aba_selecionada == "✨ Início & Agendamento":
         """, height=0, width=0)
         st.session_state["scroll_para_agendamento"] = False
 
+    # CARD DE CONFIRMAÇÃO DE PROTOCOLO APÓS AGENDAMENTO
+    if st.session_state["ultimo_protocolo"]:
+        p = st.session_state["ultimo_protocolo"]
+        st.markdown(f"""
+            <div class="protocolo-card">
+                <div style="font-size: 28px; margin-bottom: 6px;">🎉</div>
+                <h3 style="color: #4c1d95; margin: 0;">Solicitação Registrada com Sucesso!</h3>
+                <p style="color: #6b21a8; font-size: 15px; margin: 6px 0 10px 0;">
+                    Olá, <b>{p['nome']}</b>! Seu pedido foi encaminhado para a administração. Guarde seu comprovante:
+                </p>
+                <div>Número do Protocolo:</div>
+                <div class="protocolo-badge">{p['protocolo']}</div>
+                <p style="font-size: 13px; color: #7c3aed; margin-top: 10px;">
+                    💅 <b>{p['servico']}</b> • 📅 <b>{p['data_hora']}</b>
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+
     if status_agenda == "Fechada":
         st.warning("🔒 Nossa agenda de atendimentos está temporariamente fechada para novos horários online.")
     else:
@@ -277,9 +321,9 @@ if aba_selecionada == "✨ Início & Agendamento":
         }
         meses_legenda = []
         for m in meses_liberados_lista:
-            p = m.split("-")
-            if len(p) == 2:
-                meses_legenda.append(f"{nomes_meses_pt.get(p[1], p[1])}/{p[0]}")
+            parts = m.split("-")
+            if len(parts) == 2:
+                meses_legenda.append(f"{nomes_meses_pt.get(parts[1], parts[1])}/{parts[0]}")
         legenda_str = ", ".join(meses_legenda) if meses_legenda else "Consulte a administração"
 
         dias_legenda = [DIAS_SEMANA_NOMES[d] for d in sorted(dias_func_lista)]
@@ -408,7 +452,7 @@ if aba_selecionada == "✨ Início & Agendamento":
 
                     data_hora_final = f"{data_selecionada.strftime('%Y-%m-%d')} {horario_selecionado}:00"
 
-                    supabase.table("agendamentos").insert({
+                    res_ins = supabase.table("agendamentos").insert({
                         "cliente_id": cliente_id,
                         "servico_id": srv_obj["id"],
                         "data_hora": data_hora_final,
@@ -416,8 +460,18 @@ if aba_selecionada == "✨ Início & Agendamento":
                         "observacoes": observacao.strip()
                     }).execute()
 
-                    st.success(f"🎉 Horário solicitado com sucesso para {data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado}!")
-                    st.info("A gestora confirmará sua reserva diretamente pelo WhatsApp.")
+                    novo_id = res_ins.data[0]["id"] if res_ins.data else 1
+                    num_protocolo = gerar_protocolo(novo_id, str(data_selecionada))
+
+                    st.session_state["ultimo_protocolo"] = {
+                        "protocolo": num_protocolo,
+                        "nome": nome_c.strip(),
+                        "servico": srv_obj["nome_servico"],
+                        "data_hora": f"{data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado}"
+                    }
+
+                    st.toast(f"Solicitação enviada! Protocolo: {num_protocolo}")
+                    st.rerun()
 
 # =======================================================
 # 2. ACADEMY (CURSOS)
@@ -596,26 +650,30 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
             st.divider()
 
+            # DISPARO DE WHATSAPP COM PROTOCOLO INCLUSO
             if "confirmacao_pendente" in st.session_state and st.session_state["confirmacao_pendente"]:
                 d = st.session_state["confirmacao_pendente"]
                 msg_conf = (
-                    f"Olá {d['nome']}! ✨ Passando para confirmar que o seu horário no *Studio Belleza & Arte* foi CONFIRMADO!\n\n"
+                    f"Olá {d['nome']}! ✨ Passando para confirmar que o seu agendamento no *Studio Belleza & Arte* foi CONFIRMADO!\n\n"
+                    f"🔖 *Protocolo:* {d['protocolo']}\n"
                     f"💅 *Procedimento:* {d['servico']}\n"
                     f"📅 *Data e Horário:* {d['data_hora']}\n\n"
-                    f"Estamos ansiosas para te receber! Caso precise remarcar, nos avise por aqui com antecedência."
+                    f"Estamos ansiosas para te receber! Qualquer imprevisto, é só nos avisar por aqui informando seu protocolo."
                 )
                 link_zap = f"https://api.whatsapp.com/send?phone=55{d['telefone']}&text={urllib.parse.quote(msg_conf)}"
 
                 st.markdown(f"""
                     <div style="background: #f0fdf4; border: 2px solid #86efac; border-radius: 16px; padding: 18px; margin-bottom: 20px;">
                         <h4 style="color: #15803d; margin: 0 0 6px 0;">🎉 Horário de {d['nome']} Aprovado!</h4>
-                        <p style="color: #166534; font-size: 14px; margin-bottom: 10px;">Clique no botão abaixo para notificar a cliente no WhatsApp:</p>
+                        <div style="font-size: 14px; color: #166534; margin-bottom: 10px;">
+                            Protocolo: <b>{d['protocolo']}</b>
+                        </div>
                     </div>
                 """, unsafe_allow_html=True)
 
                 col_z1, col_z2 = st.columns([3, 1])
                 with col_z1:
-                    st.link_button(f"📲 Notificar {d['nome']} no WhatsApp", link_zap)
+                    st.link_button(f"📲 Notificar {d['nome']} no WhatsApp (com Protocolo)", link_zap)
                 with col_z2:
                     if st.button("Fechar Alerta", key="btn_fechar_zap"):
                         st.session_state["confirmacao_pendente"] = None
@@ -641,11 +699,14 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                     c_tel = ag["clientes"]["telefone"] if ag.get("clientes") else ""
                     s_nome = ag["servicos"]["nome_servico"] if ag.get("servicos") else "Procedimento"
                     dh_formatada = ag["data_hora"][:16].replace("T", " ")
+                    prot_ag = gerar_protocolo(ag_id, ag["data_hora"])
 
                     col_info, col_acao = st.columns([3, 2])
                     with col_info:
                         st.markdown(f"💅 **{c_nome}** — *{s_nome}*")
-                        st.caption(f"📅 Data/Hora: **{dh_formatada}** | WhatsApp: **{c_tel}** | Obs: {ag.get('observacoes') or 'Nenhuma'}")
+                        st.caption(f"🔖 Protocolo: `{prot_ag}` | 📅 Data/Hora: **{dh_formatada}** | WhatsApp: **{c_tel}**")
+                        if ag.get("observacoes"):
+                            st.caption(f"Obs: {ag['observacoes']}")
 
                     with col_acao:
                         btn1, btn2 = st.columns(2)
@@ -653,6 +714,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                             if st.button("Aprovar", key=f"ap_{ag_id}", use_container_width=True):
                                 supabase.table("agendamentos").update({"status": "Confirmado"}).eq("id", ag_id).execute()
                                 st.session_state["confirmacao_pendente"] = {
+                                    "protocolo": prot_ag,
                                     "nome": c_nome,
                                     "telefone": c_tel,
                                     "servico": s_nome,
@@ -685,15 +747,16 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                     c_nome = conf["clientes"]["nome"] if conf.get("clientes") else "Cliente"
                     s_nome = conf["servicos"]["nome_servico"] if conf.get("servicos") else "Procedimento"
                     dh_txt = conf["data_hora"][:16].replace("T", " ")
+                    prot_conf = gerar_protocolo(conf["id"], conf["data_hora"])
                     with c1_c:
-                        st.write(f"💅 **{c_nome}** — {s_nome} ({dh_txt})")
+                        st.write(f"💅 **{c_nome}** — {s_nome} (`{prot_conf}`) às {dh_txt}")
                     with c2_c:
                         if st.button("Concluir", key=f"conc_{conf['id']}", use_container_width=True):
                             supabase.table("agendamentos").update({"status": "Concluído"}).eq("id", conf["id"]).execute()
                             st.toast("Marcado como Concluído!")
                             st.rerun()
 
-        # SUB-ABA 2: GERENCIAR SERVIÇOS (CRIAR E EXCLUIR)
+        # SUB-ABA 2: GERENCIAR SERVIÇOS
         with adm2:
             st.markdown("#### ➕ Cadastrar Novo Procedimento")
             with st.form("form_novo_servico_gestora"):
@@ -721,8 +784,6 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
             st.divider()
             st.markdown("#### 🗑️ Procedimentos Atuais (Excluir Serviços)")
-            st.caption("Remova procedimentos que não deseja mais oferecer na vitrine e na agenda:")
-
             try:
                 res_lista_srv = supabase.table("servicos").select("*").order("nome_servico").execute()
                 lista_srv_cadastrados = res_lista_srv.data if res_lista_srv.data else []
@@ -760,6 +821,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                 registros = []
                 for item in lista_concluidos:
                     registros.append({
+                        "Protocolo": gerar_protocolo(item["id"], item["data_hora"]),
                         "Data/Hora": item["data_hora"][:16].replace("T", " "),
                         "Cliente": item["clientes"]["nome"] if item.get("clientes") else "Não identificado",
                         "Procedimento": item["servicos"]["nome_servico"] if item.get("servicos") else "Não identificado",
@@ -782,7 +844,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                 c_m2.markdown(f'<div class="metric-box"><div class="metric-label">🗓️ 7 Dias</div><div class="metric-value">R$ {lucro_semana:.2f}</div></div>', unsafe_allow_html=True)
                 c_m3.markdown(f'<div class="metric-box"><div class="metric-label">📊 Mês Atual</div><div class="metric-value">R$ {lucro_mes:.2f}</div></div>', unsafe_allow_html=True)
 
-                st.dataframe(df_concluidos[["Data/Hora", "Cliente", "Procedimento", "Valor"]], use_container_width=True, hide_index=True)
+                st.dataframe(df_concluidos[["Protocolo", "Data/Hora", "Cliente", "Procedimento", "Valor"]], use_container_width=True, hide_index=True)
 
         # SUB-ABA 4: PRONTUÁRIO
         with adm4:
@@ -802,7 +864,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
                 try:
                     res_hist = supabase.table("agendamentos").select(
-                        "data_hora, status, observacoes, servicos(nome_servico, preco)"
+                        "id, data_hora, status, observacoes, servicos(nome_servico, preco)"
                     ).eq("cliente_id", cli_id).order("data_hora", desc=True).execute()
                     hist_data = res_hist.data if res_hist.data else []
                 except Exception:
@@ -818,6 +880,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                 linhas_hist = []
                 for h in hist_data:
                     linhas_hist.append({
+                        "Protocolo": gerar_protocolo(h["id"], h["data_hora"]),
                         "Data/Hora": h["data_hora"][:16].replace("T", " "),
                         "Procedimento": h["servicos"]["nome_servico"] if h.get("servicos") else "N/A",
                         "Valor (R$)": float(h["servicos"]["preco"]) if h.get("servicos") else 0.0,
