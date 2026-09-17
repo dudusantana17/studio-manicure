@@ -189,7 +189,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# SCRIPT DE ROLAGEM PARA O TOPO
+# EXECUÇÃO DO SCROLL PARA O TOPO
 if st.session_state.get("scroll_para_topo", False):
     components.html("""
         <script>
@@ -236,9 +236,7 @@ def gerar_protocolo(agendamento_id: int, data_str: str) -> str:
     dt_limpa = data_str[:10].replace("-", "")
     return f"BA-{dt_limpa}-{int(agendamento_id):04d}"
 
-# =======================================================
-# MODAL EM DESTAQUE - AGENDAMENTO DE CLIENTE
-# =======================================================
+# MODAL - AGENDAMENTO DE CLIENTE
 @st.dialog("✨ Solicitação Enviada!")
 def exibir_modal_confirmacao(nome, servico, data_hora):
     st.markdown(f"""
@@ -255,28 +253,11 @@ def exibir_modal_confirmacao(nome, servico, data_hora):
             </div>
         </div>
     """, unsafe_allow_html=True)
-    
     if st.button("Entendido, fechar aviso!", use_container_width=True):
-        components.html("""
-            <script>
-                const doc = window.parent.document;
-                const topo = doc.getElementById("topo-pagina");
-                if (topo) {
-                    topo.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-                const scrollContainer = doc.querySelector('[data-testid="stAppViewContainer"]');
-                if (scrollContainer) {
-                    scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
-                }
-                window.parent.scrollTo({ top: 0, behavior: 'smooth' });
-            </script>
-        """, height=0, width=0)
         st.session_state["scroll_para_topo"] = True
         st.rerun()
 
-# =======================================================
-# MODAL EM DESTAQUE - INSCRIÇÃO EM CURSO
-# =======================================================
+# MODAL - INSCRIÇÃO EM CURSO
 @st.dialog("🎓 Inscrição Registrada!")
 def exibir_modal_curso(nome, curso, tipo_vaga, posicao=0):
     if tipo_vaga == "Titular":
@@ -302,20 +283,6 @@ def exibir_modal_curso(nome, curso, tipo_vaga, posicao=0):
     """, unsafe_allow_html=True)
 
     if st.button("Entendido, fechar aviso!", key="btn_fechar_modal_curso", use_container_width=True):
-        components.html("""
-            <script>
-                const doc = window.parent.document;
-                const topo = doc.getElementById("topo-pagina");
-                if (topo) {
-                    topo.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-                const scrollContainer = doc.querySelector('[data-testid="stAppViewContainer"]');
-                if (scrollContainer) {
-                    scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
-                }
-                window.parent.scrollTo({ top: 0, behavior: 'smooth' });
-            </script>
-        """, height=0, width=0)
         st.session_state["scroll_para_topo"] = True
         st.rerun()
 
@@ -557,7 +524,7 @@ if aba_selecionada == "✨ Início & Agendamento":
                     exibir_modal_confirmacao(nome_c.strip(), srv_obj["nome_servico"], data_hora_str)
 
 # =======================================================
-# 2. ACADEMY (CURSOS & INSCRIÇÃO COM MODAL)
+# 2. ACADEMY (CURSOS & INSCRIÇÃO COM FEEDBACK CLARO)
 # =======================================================
 elif aba_selecionada == "🎓 Academy (Cursos)":
     st.markdown("### 🎓 Capacitação & Formação em Nail Design")
@@ -566,21 +533,25 @@ elif aba_selecionada == "🎓 Academy (Cursos)":
     try:
         res_turmas = supabase.table("turmas_curso").select("*").eq("status", "Aberta").execute()
         turmas = res_turmas.data if res_turmas.data else []
-    except Exception:
+    except Exception as e:
+        st.error(f"Erro ao buscar turmas: {e}")
         turmas = []
 
     if not turmas:
-        st.info("Nenhuma turma com inscrições abertas no momento. Novas datas serão publicadas em breve!")
+        st.info("Nenhuma turma com inscrições abertas no momento.")
     else:
         cols_t = st.columns(min(len(turmas), 3))
         for idx, turma in enumerate(turmas):
             t_id = turma["id"]
-            res_titulares = supabase.table("inscricoes_curso").select("id", count="exact").eq("turma_id", t_id).eq("tipo_vaga", "Titular").execute()
-            titulares_count = res_titulares.count if res_titulares.count is not None else 0
-            vagas_restantes = turma["vagas_limite"] - titulares_count
+            
+            # Buscar titulares
+            res_titulares = supabase.table("inscricoes_curso").select("id").eq("turma_id", t_id).eq("tipo_vaga", "Titular").execute()
+            titulares_count = len(res_titulares.data) if res_titulares.data else 0
+            vagas_restantes = max(0, turma["vagas_limite"] - titulares_count)
 
-            res_reserva = supabase.table("inscricoes_curso").select("id", count="exact").eq("turma_id", t_id).eq("tipo_vaga", "Reserva").execute()
-            reserva_count = res_reserva.count if res_reserva.count is not None else 0
+            # Buscar reservas
+            res_reserva = supabase.table("inscricoes_curso").select("id").eq("turma_id", t_id).eq("tipo_vaga", "Reserva").execute()
+            reserva_count = len(res_reserva.data) if res_reserva.data else 0
 
             with cols_t[idx % 3]:
                 st.markdown('<div class="site-card">', unsafe_allow_html=True)
@@ -598,7 +569,7 @@ elif aba_selecionada == "🎓 Academy (Cursos)":
                 with st.expander("Inscrever-se Nesta Formação"):
                     with st.form(f"form_curso_{t_id}"):
                         nome_aluna = st.text_input("Nome Completo:")
-                        tel_aluna = st.text_input("WhatsApp com DDD (apenas números):", placeholder="Ex: 71999999999")
+                        tel_aluna = st.text_input("WhatsApp com DDD:", placeholder="Ex: 71999999999")
                         experiencia = st.selectbox("Seu Nível Atual:", ["Iniciante do Zero", "Manicure Tradicional", "Nail Designer em Aperfeiçoamento"])
                         texto_btn = "Garantir Vaga Titular ✨" if vagas_restantes > 0 else "Entrar na Fila de Espera 📌"
                         btn_curso = st.form_submit_button(texto_btn, use_container_width=True)
@@ -606,29 +577,32 @@ elif aba_selecionada == "🎓 Academy (Cursos)":
                     if btn_curso:
                         tel_limpo = ''.join(filter(str.isdigit, tel_aluna.strip()))
                         if not nome_aluna.strip() or len(tel_limpo) < 10:
-                            st.error("Informe seu nome completo e WhatsApp válido com DDD.")
+                            st.error("Informe seu nome completo e WhatsApp com DDD.")
                         else:
-                            if vagas_restantes > 0:
-                                supabase.table("inscricoes_curso").insert({
-                                    "turma_id": t_id,
-                                    "nome_aluna": nome_aluna.strip(),
-                                    "telefone": tel_limpo,
-                                    "experiencia_previa": experiencia,
-                                    "tipo_vaga": "Titular",
-                                    "posicao_reserva": 0
-                                }).execute()
-                                exibir_modal_curso(nome_aluna.strip(), turma["nome_curso"], "Titular")
-                            else:
-                                nova_pos = reserva_count + 1
-                                supabase.table("inscricoes_curso").insert({
-                                    "turma_id": t_id,
-                                    "nome_aluna": nome_aluna.strip(),
-                                    "telefone": tel_limpo,
-                                    "experiencia_previa": experiencia,
-                                    "tipo_vaga": "Reserva",
-                                    "posicao_reserva": nova_pos
-                                }).execute()
-                                exibir_modal_curso(nome_aluna.strip(), turma["nome_curso"], "Reserva", nova_pos)
+                            try:
+                                if vagas_restantes > 0:
+                                    supabase.table("inscricoes_curso").insert({
+                                        "turma_id": t_id,
+                                        "nome_aluna": nome_aluna.strip(),
+                                        "telefone": tel_limpo,
+                                        "experiencia_previa": experiencia,
+                                        "tipo_vaga": "Titular",
+                                        "posicao_reserva": 0
+                                    }).execute()
+                                    exibir_modal_curso(nome_aluna.strip(), turma["nome_curso"], "Titular")
+                                else:
+                                    nova_pos = reserva_count + 1
+                                    supabase.table("inscricoes_curso").insert({
+                                        "turma_id": t_id,
+                                        "nome_aluna": nome_aluna.strip(),
+                                        "telefone": tel_limpo,
+                                        "experiencia_previa": experiencia,
+                                        "tipo_vaga": "Reserva",
+                                        "posicao_reserva": nova_pos
+                                    }).execute()
+                                    exibir_modal_curso(nome_aluna.strip(), turma["nome_curso"], "Reserva", nova_pos)
+                            except Exception as err:
+                                st.error(f"Erro ao salvar inscrição: {err}")
 
                 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -843,11 +817,10 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                             st.toast("Horário desmarcado e liberado na agenda!")
                             st.rerun()
 
-        # SUB-ABA 2: GESTÃO DE CURSOS & TURMAS (NOVO)
+        # SUB-ABA 2: GESTÃO DE CURSOS & TURMAS
         with adm_curso:
             st.markdown("#### 🎓 Gestão de Inscrições nos Cursos")
 
-            # Bloco de confirmação via WhatsApp para alunas
             if st.session_state.get("conf_curso_pendente"):
                 al = st.session_state["conf_curso_pendente"]
                 msg_aluna = (
@@ -869,7 +842,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
                 col_zc1, col_zc2 = st.columns([3, 1])
                 with col_zc1:
-                    st.link_button(f"📲 Notificar {al['nome']} no WhatsApp (Confirmação da Matrícula)", link_zap_curso)
+                    st.link_button(f"📲 Notificar {al['nome']} no WhatsApp", link_zap_curso)
                 with col_zc2:
                     if st.button("Fechar Alerta", key="btn_fechar_zap_curso"):
                         st.session_state["conf_curso_pendente"] = None
@@ -879,9 +852,10 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
             st.markdown("##### 📝 Alunas Inscritas por Turma")
             try:
-                res_all_turmas = supabase.table("turmas_curso").select("*").order("data_inicio").execute()
+                res_all_turmas = supabase.table("turmas_curso").select("*").execute()
                 turmas_cadastradas = res_all_turmas.data if res_all_turmas.data else []
-            except Exception:
+            except Exception as e:
+                st.error(f"Erro ao carregar turmas: {e}")
                 turmas_cadastradas = []
 
             if not turmas_cadastradas:
@@ -892,9 +866,10 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                 t_obj = opcoes_turmas_adm[t_escolhida_nome]
 
                 try:
-                    res_inscritos = supabase.table("inscricoes_curso").select("*").eq("turma_id", t_obj["id"]).order("created_at").execute()
+                    res_inscritos = supabase.table("inscricoes_curso").select("*").eq("turma_id", t_obj["id"]).execute()
                     inscricoes = res_inscritos.data if res_inscritos.data else []
-                except Exception:
+                except Exception as e:
+                    st.error(f"Erro ao carregar inscrições: {e}")
                     inscricoes = []
 
                 if not inscricoes:
@@ -902,10 +877,10 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                 else:
                     for insc in inscricoes:
                         col_al_info, col_al_btn = st.columns([4, 2])
-                        tipo_txt = "🟢 Titular" if insc["tipo_vaga"] == "Titular" else f"🟡 Fila de Espera ({insc['posicao_reserva']}º)"
+                        tipo_txt = "🟢 Titular" if insc["tipo_vaga"] == "Titular" else f"🟡 Fila de Espera ({insc.get('posicao_reserva', 1)}º)"
                         with col_al_info:
                             st.markdown(f"👩‍🎓 **{insc['nome_aluna']}** — {tipo_txt}")
-                            st.caption(f"WhatsApp: **{insc['telefone']}** | Experiência: {insc['experiencia_previa']}")
+                            st.caption(f"WhatsApp: **{insc['telefone']}** | Nível: {insc.get('experiencia_previa', 'Não informado')}")
                         with col_al_btn:
                             b_zap, b_rem = st.columns(2)
                             with b_zap:
