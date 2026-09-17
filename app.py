@@ -15,6 +15,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# Âncora fixa no topo absoluto da página
+st.markdown('<div id="topo-pagina"></div>', unsafe_allow_html=True)
+
 # =======================================================
 # CONEXÃO SUPABASE
 # =======================================================
@@ -185,11 +188,22 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# SCRIPT DE ROLAGEM PARA O TOPO DA PÁGINA
+# EXECUÇÃO DA ROLAGEM PARA O TOPO (CASO ATIVADA)
 if st.session_state.get("scroll_para_topo", False):
     components.html("""
         <script>
-            window.parent.scrollTo({ top: 0, behavior: 'smooth' });
+            setTimeout(() => {
+                const doc = window.parent.document;
+                const topo = doc.getElementById("topo-pagina");
+                if (topo) {
+                    topo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                const scrollContainer = doc.querySelector('[data-testid="stAppViewContainer"]');
+                if (scrollContainer) {
+                    scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+                window.parent.scrollTo({ top: 0, behavior: 'smooth' });
+            }, 100);
         </script>
     """, height=0, width=0)
     st.session_state["scroll_para_topo"] = False
@@ -241,7 +255,23 @@ def exibir_modal_confirmacao(nome, servico, data_hora):
             </div>
         </div>
     """, unsafe_allow_html=True)
+    
+    # Ao clicar em fechar, roda o script diretamente antes do rerun
     if st.button("Entendido, fechar aviso!", use_container_width=True):
+        components.html("""
+            <script>
+                const doc = window.parent.document;
+                const topo = doc.getElementById("topo-pagina");
+                if (topo) {
+                    topo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                const scrollContainer = doc.querySelector('[data-testid="stAppViewContainer"]');
+                if (scrollContainer) {
+                    scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+                window.parent.scrollTo({ top: 0, behavior: 'smooth' });
+            </script>
+        """, height=0, width=0)
         st.session_state["scroll_para_topo"] = True
         st.rerun()
 
@@ -363,7 +393,6 @@ if aba_selecionada == "✨ Início & Agendamento":
                 srv_obj = map_nomes[srv_escolhido_str]
                 duracao_escolhida = int(srv_obj["duracao_minutos"])
 
-                # Calendário com padrão brasileiro DD/MM/YYYY
                 data_selecionada = st.date_input(
                     "Dia do Atendimento:",
                     min_value=datetime.today(),
@@ -446,7 +475,6 @@ if aba_selecionada == "✨ Início & Agendamento":
                     nome_c = st.text_input("Seu Nome Completo:")
                     tel_c = st.text_input("WhatsApp (DDD + Número):", placeholder="Ex: 71999999999")
                 with col_c2:
-                    # Calendário com padrão brasileiro DD/MM/YYYY
                     nasc_c = st.date_input(
                         "Data de Nascimento:",
                         value=datetime(2000, 1, 1),
@@ -481,7 +509,6 @@ if aba_selecionada == "✨ Início & Agendamento":
                         "observacoes": observacao.strip()
                     }).execute()
 
-                    # Abre o Pop-up na frente da tela
                     data_hora_str = f"{data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado}"
                     exibir_modal_confirmacao(nome_c.strip(), srv_obj["nome_servico"], data_hora_str)
 
