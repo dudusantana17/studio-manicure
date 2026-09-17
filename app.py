@@ -15,7 +15,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Âncora fixa no topo absoluto da página
 st.markdown('<div id="topo-pagina"></div>', unsafe_allow_html=True)
 
 # =======================================================
@@ -36,6 +35,8 @@ if "scroll_para_agendamento" not in st.session_state:
     st.session_state["scroll_para_agendamento"] = False
 if "scroll_para_topo" not in st.session_state:
     st.session_state["scroll_para_topo"] = False
+if "conf_curso_pendente" not in st.session_state:
+    st.session_state["conf_curso_pendente"] = None
 
 # =======================================================
 # CSS VISUAL: ROXO LUXO & POP-UP EM DESTAQUE
@@ -188,7 +189,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# EXECUÇÃO DA ROLAGEM PARA O TOPO
+# SCRIPT DE ROLAGEM PARA O TOPO
 if st.session_state.get("scroll_para_topo", False):
     components.html("""
         <script>
@@ -236,7 +237,7 @@ def gerar_protocolo(agendamento_id: int, data_str: str) -> str:
     return f"BA-{dt_limpa}-{int(agendamento_id):04d}"
 
 # =======================================================
-# POP-UP / MODAL EM DESTAQUE NA TELA
+# MODAL EM DESTAQUE - AGENDAMENTO DE CLIENTE
 # =======================================================
 @st.dialog("✨ Solicitação Enviada!")
 def exibir_modal_confirmacao(nome, servico, data_hora):
@@ -256,6 +257,51 @@ def exibir_modal_confirmacao(nome, servico, data_hora):
     """, unsafe_allow_html=True)
     
     if st.button("Entendido, fechar aviso!", use_container_width=True):
+        components.html("""
+            <script>
+                const doc = window.parent.document;
+                const topo = doc.getElementById("topo-pagina");
+                if (topo) {
+                    topo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                const scrollContainer = doc.querySelector('[data-testid="stAppViewContainer"]');
+                if (scrollContainer) {
+                    scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+                window.parent.scrollTo({ top: 0, behavior: 'smooth' });
+            </script>
+        """, height=0, width=0)
+        st.session_state["scroll_para_topo"] = True
+        st.rerun()
+
+# =======================================================
+# MODAL EM DESTAQUE - INSCRIÇÃO EM CURSO
+# =======================================================
+@st.dialog("🎓 Inscrição Registrada!")
+def exibir_modal_curso(nome, curso, tipo_vaga, posicao=0):
+    if tipo_vaga == "Titular":
+        msg_tipo = "Sua vaga titular foi pré-reservada com sucesso!"
+        icone = "🎉"
+    else:
+        msg_tipo = f"Você foi incluída na <b>{posicao}ª posição</b> da Lista de Espera!"
+        icone = "📌"
+
+    st.markdown(f"""
+        <div class="modal-sucesso-box">
+            <div style="font-size: 42px;">{icone}</div>
+            <h2>Inscrição Enviada!</h2>
+            <p style="font-size: 15px; color: #4c1d95; line-height: 1.6;">
+                Olá, <b>{nome}</b>! Recebemos sua inscrição para a formação <b>{curso}</b>.<br>{msg_tipo}
+            </p>
+            <div class="modal-detalhe">
+                <p style="margin: 0; font-size: 14px; color: #6b21a8;">
+                    📲 <b>Próximo Passo:</b> A coordenação do Studio entrará em contato via <b>WhatsApp</b> para formalizar os detalhes da matrícula e instruções de acesso.
+                </p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    if st.button("Entendido, fechar aviso!", key="btn_fechar_modal_curso", use_container_width=True):
         components.html("""
             <script>
                 const doc = window.parent.document;
@@ -511,7 +557,7 @@ if aba_selecionada == "✨ Início & Agendamento":
                     exibir_modal_confirmacao(nome_c.strip(), srv_obj["nome_servico"], data_hora_str)
 
 # =======================================================
-# 2. ACADEMY (CURSOS)
+# 2. ACADEMY (CURSOS & INSCRIÇÃO COM MODAL)
 # =======================================================
 elif aba_selecionada == "🎓 Academy (Cursos)":
     st.markdown("### 🎓 Capacitação & Formação em Nail Design")
@@ -524,7 +570,7 @@ elif aba_selecionada == "🎓 Academy (Cursos)":
         turmas = []
 
     if not turmas:
-        st.info("Nenhuma turma aberta no momento. Em breve novas turmas!")
+        st.info("Nenhuma turma com inscrições abertas no momento. Novas datas serão publicadas em breve!")
     else:
         cols_t = st.columns(min(len(turmas), 3))
         for idx, turma in enumerate(turmas):
@@ -552,15 +598,15 @@ elif aba_selecionada == "🎓 Academy (Cursos)":
                 with st.expander("Inscrever-se Nesta Formação"):
                     with st.form(f"form_curso_{t_id}"):
                         nome_aluna = st.text_input("Nome Completo:")
-                        tel_aluna = st.text_input("WhatsApp com DDD:", placeholder="Ex: 71999999999")
+                        tel_aluna = st.text_input("WhatsApp com DDD (apenas números):", placeholder="Ex: 71999999999")
                         experiencia = st.selectbox("Seu Nível Atual:", ["Iniciante do Zero", "Manicure Tradicional", "Nail Designer em Aperfeiçoamento"])
-                        texto_btn = "Garantir Vaga Titular" if vagas_restantes > 0 else "Entrar na Fila de Espera"
+                        texto_btn = "Garantir Vaga Titular ✨" if vagas_restantes > 0 else "Entrar na Fila de Espera 📌"
                         btn_curso = st.form_submit_button(texto_btn, use_container_width=True)
 
                     if btn_curso:
                         tel_limpo = ''.join(filter(str.isdigit, tel_aluna.strip()))
                         if not nome_aluna.strip() or len(tel_limpo) < 10:
-                            st.error("Informe seu nome e WhatsApp completo com DDD.")
+                            st.error("Informe seu nome completo e WhatsApp válido com DDD.")
                         else:
                             if vagas_restantes > 0:
                                 supabase.table("inscricoes_curso").insert({
@@ -571,7 +617,7 @@ elif aba_selecionada == "🎓 Academy (Cursos)":
                                     "tipo_vaga": "Titular",
                                     "posicao_reserva": 0
                                 }).execute()
-                                st.success("🎉 Inscrição confirmada como Titular!")
+                                exibir_modal_curso(nome_aluna.strip(), turma["nome_curso"], "Titular")
                             else:
                                 nova_pos = reserva_count + 1
                                 supabase.table("inscricoes_curso").insert({
@@ -582,8 +628,7 @@ elif aba_selecionada == "🎓 Academy (Cursos)":
                                     "tipo_vaga": "Reserva",
                                     "posicao_reserva": nova_pos
                                 }).execute()
-                                st.warning(f"📌 Turma lotada! Você está na {nova_pos}ª posição da reserva.")
-                            st.rerun()
+                                exibir_modal_curso(nome_aluna.strip(), turma["nome_curso"], "Reserva", nova_pos)
 
                 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -615,8 +660,9 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                 st.session_state.gestora_logada = False
                 st.rerun()
 
-        adm1, adm2, adm3, adm4, adm5 = st.tabs([
+        adm1, adm_curso, adm2, adm3, adm4, adm5 = st.tabs([
             "📋 Gestão da Agenda & Aprovações",
+            "🎓 Gestão de Cursos & Turmas",
             "💅 Gerenciar Serviços (Criar / Excluir)",
             "📊 Faturamento & Métricas",
             "🗂️ Prontuário de Clientes",
@@ -717,7 +763,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
                 st.divider()
 
-            st.markdown("#### ⏳ Solicitações Pendentes")
+            st.markdown("#### ⏳ Solicitações Pendentes de Agendamento")
             try:
                 res_pendentes = supabase.table("agendamentos").select(
                     "id, data_hora, observacoes, servicos(nome_servico), clientes(nome, telefone)"
@@ -797,7 +843,122 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                             st.toast("Horário desmarcado e liberado na agenda!")
                             st.rerun()
 
-        # SUB-ABA 2: GERENCIAR SERVIÇOS
+        # SUB-ABA 2: GESTÃO DE CURSOS & TURMAS (NOVO)
+        with adm_curso:
+            st.markdown("#### 🎓 Gestão de Inscrições nos Cursos")
+
+            # Bloco de confirmação via WhatsApp para alunas
+            if st.session_state.get("conf_curso_pendente"):
+                al = st.session_state["conf_curso_pendente"]
+                msg_aluna = (
+                    f"Olá, {al['nome']}! ✨ Aqui é do *Studio Belleza & Arte*.\n\n"
+                    f"Passando para te dar as boas-vindas e confirmar que a sua vaga no curso *{al['curso']}* foi GARANTIDA!\n\n"
+                    f"📅 *Início:* {al['inicio']} | ⏱ *Horário:* {al['horario']}\n"
+                    f"Caso tenha dúvidas sobre o material ou cronograma das aulas, estamos à total disposição."
+                )
+                link_zap_curso = f"https://api.whatsapp.com/send?phone=55{al['telefone']}&text={urllib.parse.quote(msg_aluna)}"
+
+                st.markdown(f"""
+                    <div style="background: #f0fdf4; border: 2px solid #86efac; border-radius: 16px; padding: 18px; margin-bottom: 20px;">
+                        <h4 style="color: #15803d; margin: 0 0 6px 0;">🎉 Vaga de {al['nome']} Confirmada!</h4>
+                        <div style="font-size: 14px; color: #166534; margin-bottom: 10px;">
+                            Curso: <b>{al['curso']}</b> | Tipo: <b>{al['tipo']}</b>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+                col_zc1, col_zc2 = st.columns([3, 1])
+                with col_zc1:
+                    st.link_button(f"📲 Notificar {al['nome']} no WhatsApp (Confirmação da Matrícula)", link_zap_curso)
+                with col_zc2:
+                    if st.button("Fechar Alerta", key="btn_fechar_zap_curso"):
+                        st.session_state["conf_curso_pendente"] = None
+                        st.rerun()
+
+                st.divider()
+
+            st.markdown("##### 📝 Alunas Inscritas por Turma")
+            try:
+                res_all_turmas = supabase.table("turmas_curso").select("*").order("data_inicio").execute()
+                turmas_cadastradas = res_all_turmas.data if res_all_turmas.data else []
+            except Exception:
+                turmas_cadastradas = []
+
+            if not turmas_cadastradas:
+                st.info("Nenhuma turma cadastrada no momento.")
+            else:
+                opcoes_turmas_adm = {f"{t['nome_curso']} (Início: {t['data_inicio']})": t for t in turmas_cadastradas}
+                t_escolhida_nome = st.selectbox("Selecione a Turma:", list(opcoes_turmas_adm.keys()))
+                t_obj = opcoes_turmas_adm[t_escolhida_nome]
+
+                try:
+                    res_inscritos = supabase.table("inscricoes_curso").select("*").eq("turma_id", t_obj["id"]).order("created_at").execute()
+                    inscricoes = res_inscritos.data if res_inscritos.data else []
+                except Exception:
+                    inscricoes = []
+
+                if not inscricoes:
+                    st.caption("Nenhuma inscrição registrada nesta turma até o momento.")
+                else:
+                    for insc in inscricoes:
+                        col_al_info, col_al_btn = st.columns([4, 2])
+                        tipo_txt = "🟢 Titular" if insc["tipo_vaga"] == "Titular" else f"🟡 Fila de Espera ({insc['posicao_reserva']}º)"
+                        with col_al_info:
+                            st.markdown(f"👩‍🎓 **{insc['nome_aluna']}** — {tipo_txt}")
+                            st.caption(f"WhatsApp: **{insc['telefone']}** | Experiência: {insc['experiencia_previa']}")
+                        with col_al_btn:
+                            b_zap, b_rem = st.columns(2)
+                            with b_zap:
+                                if st.button("Confirmar", key=f"btn_conf_al_{insc['id']}", use_container_width=True):
+                                    st.session_state["conf_curso_pendente"] = {
+                                        "nome": insc["nome_aluna"],
+                                        "telefone": insc["telefone"],
+                                        "curso": t_obj["nome_curso"],
+                                        "inicio": t_obj["data_inicio"],
+                                        "horario": t_obj["horario"],
+                                        "tipo": insc["tipo_vaga"]
+                                    }
+                                    st.rerun()
+                            with b_rem:
+                                if st.button("Remover", key=f"btn_rem_al_{insc['id']}", use_container_width=True):
+                                    supabase.table("inscricoes_curso").delete().eq("id", insc["id"]).execute()
+                                    st.toast("Inscrição removida!")
+                                    st.rerun()
+                        st.write("")
+
+            st.divider()
+            st.markdown("##### ➕ Criar Nova Turma de Formação")
+            with st.form("form_nova_turma"):
+                c_t1, c_t2 = st.columns(2)
+                with c_t1:
+                    novo_curso_nome = st.text_input("Nome da Formação:", placeholder="Ex: Formação Nail Designer Completa")
+                    novo_curso_inicio = st.text_input("Data de Início:", placeholder="Ex: 10 de Outubro / 2026")
+                with c_t2:
+                    novo_curso_horario = st.text_input("Horário das Aulas:", placeholder="Ex: 09:00 às 17:00")
+                    c_v1, c_v2 = st.columns(2)
+                    with c_v1:
+                        novo_curso_vagas = st.number_input("Vagas Titulares:", min_value=1, max_value=50, value=6)
+                    with c_v2:
+                        novo_curso_preco = st.number_input("Valor da Matrícula (R$):", min_value=0.0, step=50.0, value=450.0)
+
+                btn_criar_turma = st.form_submit_button("Abrir Nova Turma ✨", use_container_width=True)
+
+            if btn_criar_turma:
+                if novo_curso_nome.strip() and novo_curso_inicio.strip():
+                    supabase.table("turmas_curso").insert({
+                        "nome_curso": novo_curso_nome.strip(),
+                        "data_inicio": novo_curso_inicio.strip(),
+                        "horario": novo_curso_horario.strip(),
+                        "vagas_limite": int(novo_curso_vagas),
+                        "preco_curso": float(novo_curso_preco),
+                        "status": "Aberta"
+                    }).execute()
+                    st.toast("Turma criada e liberada no site!")
+                    st.rerun()
+                else:
+                    st.error("Preencha o nome da formação e a data de início.")
+
+        # SUB-ABA 3: GERENCIAR SERVIÇOS
         with adm2:
             st.markdown("#### ➕ Cadastrar Novo Procedimento")
             with st.form("form_novo_servico_gestora"):
@@ -845,7 +1006,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                             st.rerun()
                     st.write("")
 
-        # SUB-ABA 3: FATURAMENTO
+        # SUB-ABA 4: FATURAMENTO
         with adm3:
             st.markdown("#### 📈 Balanço Financeiro")
             try:
@@ -887,7 +1048,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
                 st.dataframe(df_concluidos[["Protocolo", "Data/Hora", "Cliente", "Procedimento", "Valor"]], use_container_width=True, hide_index=True)
 
-        # SUB-ABA 4: PRONTUÁRIO
+        # SUB-ABA 5: PRONTUÁRIO
         with adm4:
             st.markdown("#### 🗂️ Histórico por Cliente")
             try:
@@ -930,7 +1091,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                     })
                 st.dataframe(pd.DataFrame(linhas_hist), use_container_width=True, hide_index=True)
 
-        # SUB-ABA 5: CRM
+        # SUB-ABA 6: CRM
         with adm5:
             st.markdown("#### 💌 Alertas de Retorno (15 e 30 dias)")
             try:
