@@ -198,7 +198,7 @@ aba_selecionada = st.radio(
     label_visibility="collapsed"
 )
 
-# DIAS DA SEMANA
+# MAPEAMENTO DIAS DA SEMANA
 DIAS_SEMANA_NOMES = {
     0: "Segunda-feira",
     1: "Terça-feira",
@@ -252,8 +252,11 @@ if aba_selecionada == "✨ Início":
 # =======================================================
 elif aba_selecionada == "💅 Serviços & Valores":
     st.markdown("### 💅 Procedimentos Disponíveis")
-    res_srv = supabase.table("servicos").select("*").execute()
-    servicos = res_srv.data if res_srv.data else []
+    try:
+        res_srv = supabase.table("servicos").select("*").execute()
+        servicos = res_srv.data if res_srv.data else []
+    except Exception:
+        servicos = []
 
     if not servicos:
         st.info("Nenhum serviço cadastrado no momento.")
@@ -275,82 +278,91 @@ elif aba_selecionada == "💅 Serviços & Valores":
 # =======================================================
 elif aba_selecionada == "🎓 Cursos & Turmas":
     st.markdown("### 🎓 Formação Profissional em Nail Design")
-    res_turmas = supabase.table("turmas_curso").select("*").eq("status", "Aberta").execute()
-    turmas = res_turmas.data if res_turmas.data else []
+    try:
+        res_turmas = supabase.table("turmas_curso").select("*").eq("status", "Aberta").execute()
+        turmas = res_turmas.data if res_turmas.data else []
+    except Exception:
+        turmas = []
 
-    cols_t = st.columns(len(turmas) if len(turmas) > 0 else 1)
-    for idx, turma in enumerate(turmas):
-        t_id = turma["id"]
-        res_titulares = supabase.table("inscricoes_curso").select("id", count="exact").eq("turma_id", t_id).eq("tipo_vaga", "Titular").execute()
-        titulares_count = res_titulares.count if res_titulares.count is not None else 0
-        vagas_restantes = turma["vagas_limite"] - titulares_count
+    if not turmas:
+        st.info("Nenhuma turma aberta no momento.")
+    else:
+        cols_t = st.columns(len(turmas))
+        for idx, turma in enumerate(turmas):
+            t_id = turma["id"]
+            res_titulares = supabase.table("inscricoes_curso").select("id", count="exact").eq("turma_id", t_id).eq("tipo_vaga", "Titular").execute()
+            titulares_count = res_titulares.count if res_titulares.count is not None else 0
+            vagas_restantes = turma["vagas_limite"] - titulares_count
 
-        res_reserva = supabase.table("inscricoes_curso").select("id", count="exact").eq("turma_id", t_id).eq("tipo_vaga", "Reserva").execute()
-        reserva_count = res_reserva.count if res_reserva.count is not None else 0
+            res_reserva = supabase.table("inscricoes_curso").select("id", count="exact").eq("turma_id", t_id).eq("tipo_vaga", "Reserva").execute()
+            reserva_count = res_reserva.count if res_reserva.count is not None else 0
 
-        with cols_t[idx]:
-            st.markdown('<div class="site-card">', unsafe_allow_html=True)
-            if vagas_restantes > 0:
-                st.markdown(f'<span style="background-color: #ecfdf5; color: #047857; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">🟢 Vagas Abertas ({vagas_restantes} de {turma["vagas_limite"]})</span>', unsafe_allow_html=True)
-            else:
-                st.markdown(f'<span style="background-color: #fffbeb; color: #b45309; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">🟡 Turma Cheia (Fila: {reserva_count})</span>', unsafe_allow_html=True)
+            with cols_t[idx]:
+                st.markdown('<div class="site-card">', unsafe_allow_html=True)
+                if vagas_restantes > 0:
+                    st.markdown(f'<span style="background-color: #ecfdf5; color: #047857; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">🟢 Vagas Abertas ({vagas_restantes} de {turma["vagas_limite"]})</span>', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<span style="background-color: #fffbeb; color: #b45309; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">🟡 Turma Cheia (Fila: {reserva_count})</span>', unsafe_allow_html=True)
 
-            st.markdown(f"""
-                <h3 style="margin-top: 10px;">{turma['nome_curso']}</h3>
-                <div style="font-size: 13px; color: #6b21a8; margin-bottom: 8px;">📅 Início: {turma['data_inicio']} • ⏱ {turma['horario']}</div>
-                <div class="card-price-value">R$ {float(turma['preco_curso']):.2f}</div>
-            """, unsafe_allow_html=True)
+                st.markdown(f"""
+                    <h3 style="margin-top: 10px;">{turma['nome_curso']}</h3>
+                    <div style="font-size: 13px; color: #6b21a8; margin-bottom: 8px;">📅 Início: {turma['data_inicio']} • ⏱ {turma['horario']}</div>
+                    <div class="card-price-value">R$ {float(turma['preco_curso']):.2f}</div>
+                """, unsafe_allow_html=True)
 
-            with st.expander("Inscrever-se Nesta Turma"):
-                with st.form(f"form_curso_{t_id}"):
-                    nome_aluna = st.text_input("Nome Completo:")
-                    tel_aluna = st.text_input("WhatsApp (DDD + Número):", placeholder="Ex: 71999999999")
-                    experiencia = st.selectbox("Seu Nível Atual:", ["Iniciante do Zero", "Já atuo como Manicure", "Nail Designer em Aperfeiçoamento"])
-                    texto_btn = "Garantir Vaga Titular" if vagas_restantes > 0 else "Entrar na Lista de Espera"
-                    btn_curso = st.form_submit_button(texto_btn, use_container_width=True)
+                with st.expander("Inscrever-se Nesta Turma"):
+                    with st.form(f"form_curso_{t_id}"):
+                        nome_aluna = st.text_input("Nome Completo:")
+                        tel_aluna = st.text_input("WhatsApp (DDD + Número):", placeholder="Ex: 71999999999")
+                        experiencia = st.selectbox("Seu Nível Atual:", ["Iniciante do Zero", "Já atuo como Manicure", "Nail Designer em Aperfeiçoamento"])
+                        texto_btn = "Garantir Vaga Titular" if vagas_restantes > 0 else "Entrar na Lista de Espera"
+                        btn_curso = st.form_submit_button(texto_btn, use_container_width=True)
 
-                if btn_curso:
-                    tel_limpo = ''.join(filter(str.isdigit, tel_aluna.strip()))
-                    if not nome_aluna.strip() or len(tel_limpo) < 10:
-                        st.error("Informe seu nome e WhatsApp completo com DDD.")
-                    else:
-                        if vagas_restantes > 0:
-                            supabase.table("inscricoes_curso").insert({
-                                "turma_id": t_id,
-                                "nome_aluna": nome_aluna.strip(),
-                                "telefone": tel_limpo,
-                                "experiencia_previa": experiencia,
-                                "tipo_vaga": "Titular",
-                                "posicao_reserva": 0
-                            }).execute()
-                            st.success("🎉 Inscrição confirmada como Titular! A gestora entrará em contato via WhatsApp.")
+                    if btn_curso:
+                        tel_limpo = ''.join(filter(str.isdigit, tel_aluna.strip()))
+                        if not nome_aluna.strip() or len(tel_limpo) < 10:
+                            st.error("Informe seu nome e WhatsApp completo com DDD.")
                         else:
-                            nova_pos = reserva_count + 1
-                            supabase.table("inscricoes_curso").insert({
-                                "turma_id": t_id,
-                                "nome_aluna": nome_aluna.strip(),
-                                "telefone": tel_limpo,
-                                "experiencia_previa": experiencia,
-                                "tipo_vaga": "Reserva",
-                                "posicao_reserva": nova_pos
-                            }).execute()
-                            st.warning(f"📌 Turma lotada! Você está na {nova_pos}ª posição da reserva.")
-                        st.rerun()
+                            if vagas_restantes > 0:
+                                supabase.table("inscricoes_curso").insert({
+                                    "turma_id": t_id,
+                                    "nome_aluna": nome_aluna.strip(),
+                                    "telefone": tel_limpo,
+                                    "experiencia_previa": experiencia,
+                                    "tipo_vaga": "Titular",
+                                    "posicao_reserva": 0
+                                }).execute()
+                                st.success("🎉 Inscrição confirmada como Titular! A gestora entrará em contato via WhatsApp.")
+                            else:
+                                nova_pos = reserva_count + 1
+                                supabase.table("inscricoes_curso").insert({
+                                    "turma_id": t_id,
+                                    "nome_aluna": nome_aluna.strip(),
+                                    "telefone": tel_limpo,
+                                    "experiencia_previa": experiencia,
+                                    "tipo_vaga": "Reserva",
+                                    "posicao_reserva": nova_pos
+                                }).execute()
+                                st.warning(f"📌 Turma lotada! Você está na {nova_pos}ª posição da reserva.")
+                            st.rerun()
 
-            st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
 
 # =======================================================
 # 4. AGENDAR HORÁRIO (GRADE INTELIGENTE DE HORÁRIOS)
 # =======================================================
 elif aba_selecionada == "📅 Agendar Horário":
-    # 1. Carregar Configurações Globais
-    res_conf = supabase.table("configuracoes").select("*").execute()
-    dict_conf = {row["chave"]: row["valor"] for row in (res_conf.data or [])}
+    # 1. Carregar Configurações Globais com Fallbacks
+    try:
+        res_conf = supabase.table("configuracoes").select("*").execute()
+        dict_conf = {row["chave"]: row["valor"] for row in (res_conf.data or [])}
+    except Exception:
+        dict_conf = {}
 
     status_agenda = dict_conf.get("agenda_status", "Aberta")
     meses_liberados_str = dict_conf.get("mes_liberado", "2026-09,2026-10")
     meses_liberados_lista = [m.strip() for m in meses_liberados_str.split(",") if m.strip()]
-    dias_func_str = dict_conf.get("dias_funcionamento", "1,2,3,4,5")  # Padrão: Terça a Sábado
+    dias_func_str = dict_conf.get("dias_funcionamento", "1,2,3,4,5")
     dias_func_lista = [int(d.strip()) for d in dias_func_str.split(",") if d.strip()]
 
     st.markdown("### 📅 Solicitação de Agendamento Online")
@@ -368,20 +380,23 @@ elif aba_selecionada == "📅 Agendar Horário":
             p = m.split("-")
             if len(p) == 2:
                 meses_legenda.append(f"{nomes_meses_pt.get(p[1], p[1])}/{p[0]}")
-        legenda_str = ", ".join(meses_legenda) if meses_legenda else "Consulte com a administração"
+        legenda_str = ", ".join(meses_legenda) if meses_legenda else "Consulte a administração"
 
         dias_legenda = [DIAS_SEMANA_NOMES[d] for d in sorted(dias_func_lista)]
         st.info(f"🗓️ **Meses liberados:** {legenda_str} | **Dias de Atendimento:** {', '.join(dias_legenda)}")
 
-        res_srv = supabase.table("servicos").select("*").execute()
-        servicos = res_srv.data if res_srv.data else []
+        try:
+            res_srv = supabase.table("servicos").select("*").execute()
+            servicos = res_srv.data if res_srv.data else []
+        except Exception:
+            servicos = []
 
         col_esq, col_dir = st.columns([1, 1])
 
         with col_esq:
             st.markdown("#### 1. Procedimento & Data")
             if not servicos:
-                st.warning("⚠️ Nenhum serviço cadastrado no momento. Cadastre os procedimentos no banco para habilitar agendamentos.")
+                st.warning("⚠️ Nenhum serviço cadastrado no momento. A gestora pode cadastrar os procedimentos na área administrativa.")
                 srv_obj = None
                 duracao_escolhida = 60
                 data_selecionada = datetime.today().date()
@@ -415,13 +430,15 @@ elif aba_selecionada == "📅 Agendar Horário":
                 data_inicio_dia = f"{data_selecionada.strftime('%Y-%m-%d')} 00:00:00"
                 data_fim_dia = f"{data_selecionada.strftime('%Y-%m-%d')} 23:59:59"
 
-                res_ocupados = supabase.table("agendamentos").select(
-                    "data_hora, servicos(duracao_minutos)"
-                ).gte("data_hora", data_inicio_dia).lte("data_hora", data_fim_dia).in_("status", ["Pendente", "Confirmado"]).execute()
+                try:
+                    res_ocupados = supabase.table("agendamentos").select(
+                        "data_hora, servicos(duracao_minutos)"
+                    ).gte("data_hora", data_inicio_dia).lte("data_hora", data_fim_dia).in_("status", ["Pendente", "Confirmado"]).execute()
+                    ocupados = res_ocupados.data or []
+                except Exception:
+                    ocupados = []
 
-                ocupados = res_ocupados.data or []
                 intervalos_ocupados = []
-
                 for ag_oc in ocupados:
                     dt_hora_str = ag_oc["data_hora"][:19].replace("T", " ")
                     dt_inicio = datetime.strptime(dt_hora_str, "%Y-%m-%d %H:%M:%S")
@@ -544,10 +561,13 @@ elif aba_selecionada == "🔐 Acesso Gestora":
         # SUB-ABA 1: FATURAMENTO
         with adm1:
             st.markdown("#### 📈 Balanço de Atendimentos e Faturamento")
-            res_concluidos = supabase.table("agendamentos").select(
-                "id, data_hora, servicos(nome_servico, preco), clientes(nome)"
-            ).eq("status", "Concluído").execute()
-            lista_concluidos = res_concluidos.data if res_concluidos.data else []
+            try:
+                res_concluidos = supabase.table("agendamentos").select(
+                    "id, data_hora, servicos(nome_servico, preco), clientes(nome)"
+                ).eq("status", "Concluído").execute()
+                lista_concluidos = res_concluidos.data if res_concluidos.data else []
+            except Exception:
+                lista_concluidos = []
 
             if not lista_concluidos:
                 st.info("Nenhum atendimento concluído para gerar estatísticas.")
@@ -587,8 +607,11 @@ elif aba_selecionada == "🔐 Acesso Gestora":
         # SUB-ABA 2: GESTÃO DA AGENDA
         with adm2:
             st.markdown("#### ⚙️ Controle Geral de Meses & Dias de Expediente")
-            res_conf = supabase.table("configuracoes").select("*").execute()
-            dict_conf = {row["chave"]: row["valor"] for row in (res_conf.data or [])}
+            try:
+                res_conf = supabase.table("configuracoes").select("*").execute()
+                dict_conf = {row["chave"]: row["valor"] for row in (res_conf.data or [])}
+            except Exception:
+                dict_conf = {}
 
             col_cf1, col_cf2 = st.columns([1, 2])
             with col_cf1:
@@ -643,6 +666,32 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                 st.toast("Dias de funcionamento salvos!")
                 st.rerun()
 
+            # CADASTRO DE NOVOS PROCEDIMENTOS DIRETO PELA GESTORA
+            st.divider()
+            st.markdown("#### ➕ Cadastrar Novo Procedimento")
+            with st.form("form_novo_servico"):
+                c_srv1, c_srv2, c_srv3 = st.columns([3, 2, 2])
+                with c_srv1:
+                    novo_srv_nome = st.text_input("Nome do Procedimento:", placeholder="Ex: Esmaltação em Gel")
+                with c_srv2:
+                    novo_srv_duracao = st.number_input("Duração (Minutos):", min_value=15, max_value=240, step=15, value=60)
+                with c_srv3:
+                    novo_srv_preco = st.number_input("Preço (R$):", min_value=0.0, step=5.0, value=70.0)
+
+                btn_salvar_srv = st.form_submit_button("Adicionar Serviço", use_container_width=True)
+
+            if btn_salvar_srv:
+                if novo_srv_nome.strip():
+                    supabase.table("servicos").insert({
+                        "nome_servico": novo_srv_nome.strip(),
+                        "duracao_minutos": int(novo_srv_duracao),
+                        "preco": float(novo_srv_preco)
+                    }).execute()
+                    st.toast("Procedimento cadastrado com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("Informe o nome do procedimento.")
+
             st.divider()
 
             # BOTÃO VERDE DE CONFIRMAÇÃO DA GESTORA PARA A CLIENTE
@@ -674,10 +723,13 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                 st.divider()
 
             st.markdown("#### ⏳ Solicitações Pendentes de Aprovação")
-            res_pendentes = supabase.table("agendamentos").select(
-                "id, data_hora, observacoes, servicos(nome_servico), clientes(nome, telefone)"
-            ).eq("status", "Pendente").order("data_hora").execute()
-            pendentes = res_pendentes.data if res_pendentes.data else []
+            try:
+                res_pendentes = supabase.table("agendamentos").select(
+                    "id, data_hora, observacoes, servicos(nome_servico), clientes(nome, telefone)"
+                ).eq("status", "Pendente").order("data_hora").execute()
+                pendentes = res_pendentes.data if res_pendentes.data else []
+            except Exception:
+                pendentes = []
 
             if not pendentes:
                 st.info("Nenhuma solicitação de horário pendente no momento.")
@@ -716,10 +768,13 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
             st.divider()
             st.markdown("#### ✅ Atendimentos Confirmados (Finalizar)")
-            res_confirmados = supabase.table("agendamentos").select(
-                "id, data_hora, servicos(nome_servico), clientes(nome)"
-            ).eq("status", "Confirmado").order("data_hora").execute()
-            confirmados = res_confirmados.data if res_confirmados.data else []
+            try:
+                res_confirmados = supabase.table("agendamentos").select(
+                    "id, data_hora, servicos(nome_servico), clientes(nome)"
+                ).eq("status", "Confirmado").order("data_hora").execute()
+                confirmados = res_confirmados.data if res_confirmados.data else []
+            except Exception:
+                confirmados = []
 
             if not confirmados:
                 st.caption("Nenhum atendimento confirmado aguardando realização.")
@@ -740,8 +795,11 @@ elif aba_selecionada == "🔐 Acesso Gestora":
         # SUB-ABA 3: PRONTUÁRIO
         with adm3:
             st.markdown("#### 🗂️ Prontuário e Histórico de Atendimentos")
-            res_clientes = supabase.table("clientes").select("id, nome, telefone").order("nome").execute()
-            clientes_cad = res_clientes.data if res_clientes.data else []
+            try:
+                res_clientes = supabase.table("clientes").select("id, nome, telefone").order("nome").execute()
+                clientes_cad = res_clientes.data if res_clientes.data else []
+            except Exception:
+                clientes_cad = []
 
             if not clientes_cad:
                 st.info("Nenhuma cliente cadastrada.")
@@ -750,10 +808,13 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                 c_escolhida = st.selectbox("Selecione a Cliente:", list(opcoes_c.keys()))
                 cli_id = opcoes_c[c_escolhida]
 
-                res_hist = supabase.table("agendamentos").select(
-                    "data_hora, status, observacoes, servicos(nome_servico, preco)"
-                ).eq("cliente_id", cli_id).order("data_hora", desc=True).execute()
-                hist_data = res_hist.data if res_hist.data else []
+                try:
+                    res_hist = supabase.table("agendamentos").select(
+                        "data_hora, status, observacoes, servicos(nome_servico, preco)"
+                    ).eq("cliente_id", cli_id).order("data_hora", desc=True).execute()
+                    hist_data = res_hist.data if res_hist.data else []
+                except Exception:
+                    hist_data = []
 
                 concluidos = [h for h in hist_data if h["status"] == "Concluído"]
                 total_investido = sum(float(h["servicos"]["preco"]) for h in concluidos if h.get("servicos"))
@@ -777,10 +838,13 @@ elif aba_selecionada == "🔐 Acesso Gestora":
         # SUB-ABA 4: CRM
         with adm4:
             st.markdown("#### ⏳ Lembretes de Retorno (15 e 30 dias)")
-            res_ret = supabase.table("agendamentos").select(
-                "data_hora, servicos(nome_servico), clientes(nome, telefone)"
-            ).eq("status", "Concluído").execute()
-            ret_data = res_ret.data if res_ret.data else []
+            try:
+                res_ret = supabase.table("agendamentos").select(
+                    "data_hora, servicos(nome_servico), clientes(nome, telefone)"
+                ).eq("status", "Concluído").execute()
+                ret_data = res_ret.data if res_ret.data else []
+            except Exception:
+                ret_data = []
 
             lembrete_encontrado = False
             for item in ret_data:
