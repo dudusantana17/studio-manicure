@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta, time
 import urllib.parse
 from supabase import create_client, Client
+import streamlit.components.v1 as components
 
 # =======================================================
 # CONFIGURAÇÃO DE PÁGINA
@@ -28,6 +29,8 @@ SENHA_MESTRE = st.secrets.get("GESTORA_PASSWORD", "studio2026")
 
 if "servico_preselecionado" not in st.session_state:
     st.session_state["servico_preselecionado"] = None
+if "scroll_para_agendamento" not in st.session_state:
+    st.session_state["scroll_para_agendamento"] = False
 
 # =======================================================
 # CSS VISUAL: ROXO LUXO & BOTÕES MODERNOS
@@ -229,7 +232,6 @@ if aba_selecionada == "✨ Início & Agendamento":
     if not servicos:
         st.info("Nenhum procedimento cadastrado no momento. A gestora pode cadastrar novos serviços no Painel Administrativo.")
     else:
-        # Exibe em colunas dinâmicas (máximo 3 por linha para visualização equilibrada)
         cols = st.columns(min(len(servicos), 3))
         for idx, srv in enumerate(servicos):
             col_target = cols[idx % 3]
@@ -244,10 +246,26 @@ if aba_selecionada == "✨ Início & Agendamento":
                 """, unsafe_allow_html=True)
                 if st.button(f"Agendar {srv['nome_servico']} ✨", key=f"btn_srv_{srv['id']}", use_container_width=True):
                     st.session_state["servico_preselecionado"] = srv["nome_servico"]
+                    st.session_state["scroll_para_agendamento"] = True
                     st.rerun()
 
     st.divider()
+
+    # Âncora visual de destino
+    st.markdown('<div id="area-agendamento"></div>', unsafe_allow_html=True)
     st.markdown("### 📅 Escolha a Sua Data & Horário")
+
+    # Script para rolar suavemente até o agendamento se o botão do card foi clicado
+    if st.session_state.get("scroll_para_agendamento", False):
+        components.html("""
+            <script>
+                const target = window.parent.document.getElementById("area-agendamento");
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            </script>
+        """, height=0, width=0)
+        st.session_state["scroll_para_agendamento"] = False
 
     if status_agenda == "Fechada":
         st.warning("🔒 Nossa agenda de atendimentos está temporariamente fechada para novos horários online.")
