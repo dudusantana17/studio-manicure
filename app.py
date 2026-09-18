@@ -27,7 +27,7 @@ def get_supabase() -> Client:
     return create_client(url, key)
 
 supabase = get_supabase()
-SENHA_MESTRE = st.secrets.get("GESTORA_PASSWORD", "studio2026")
+SENHA_MESTRE = st.secrets["GESTORA_PASSWORD"]
 
 VALOR_SINAL = 20.00
 CHAVE_PIX = "21969861082"
