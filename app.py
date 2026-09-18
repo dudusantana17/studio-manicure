@@ -18,7 +18,7 @@ st.set_page_config(
 st.markdown('<div id="topo-pagina"></div>', unsafe_allow_html=True)
 
 # =======================================================
-# CONEXÃO SUPABASE & CONSTANTES DA RAFAELLA
+# CONEXÃO SUPABASE & DADOS DE COBRANÇA
 # =======================================================
 @st.cache_resource
 def get_supabase() -> Client:
@@ -45,19 +45,48 @@ if "conf_curso_pendente" not in st.session_state:
     st.session_state["conf_curso_pendente"] = None
 
 # =======================================================
-# CSS VISUAL: ROXO LUXO & POP-UP EM DESTAQUE
+# CSS VISUAL COM BLINDAGEM CONTRA MODO ESCURO
 # =======================================================
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
 
-    html, body, [class*="css"] {
-        font-family: 'Plus Jakarta Sans', sans-serif;
+    /* Força todas as fontes e cores base */
+    html, body, [class*="css"], .stApp {
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        background-color: #faf5ff !important;
+        color: #2e1065 !important;
+    }
+
+    /* Oculta barras padrão */
+    footer {visibility: hidden; display: none !important;}
+    [data-testid="stStatusWidget"] {visibility: hidden; display: none !important;}
+    header {visibility: hidden; display: none !important;}
+
+    /* Blindagem para títulos e textos gerais */
+    h1, h2, h3, h4, h5, h6, p, span, label, div {
         color: #2e1065;
     }
-    .stApp {
-        background-color: #faf5ff;
+
+    /* Rótulos de campos (inputs, selects, radio, datas) */
+    .stTextInput label, .stDateInput label, .stSelectbox label, 
+    .stRadio label, .stCheckbox label, .stTextArea label, .stTimeInput label {
+        color: #2e1065 !important;
+        font-weight: 600 !important;
     }
+
+    /* Textos dentro de opções (rádio de horários e checkboxes) */
+    [data-testid="stMarkdownContainer"] p {
+        color: #2e1065 !important;
+    }
+
+    /* Campos de entrada e seleção */
+    input, textarea, [data-baseweb="select"] {
+        color: #2e1065 !important;
+        background-color: #ffffff !important;
+        border: 1px solid #d8b4fe !important;
+    }
+
     .site-nav {
         display: flex;
         justify-content: space-between;
@@ -73,11 +102,11 @@ st.markdown("""
         font-family: 'Playfair Display', serif;
         font-size: 26px;
         font-weight: 700;
-        color: #581c87;
+        color: #581c87 !important;
     }
     .nav-tagline {
         font-size: 11px;
-        color: #9333ea;
+        color: #9333ea !important;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 2px;
@@ -86,24 +115,14 @@ st.markdown("""
         background: linear-gradient(135deg, #2e1065 0%, #581c87 50%, #7e22ce 100%);
         border-radius: 24px;
         padding: 45px 32px;
-        color: #ffffff;
+        color: #ffffff !important;
         text-align: center;
         margin-bottom: 30px;
         box-shadow: 0 16px 36px -6px rgba(88, 28, 135, 0.35);
         border: 1px solid #c084fc;
     }
-    .hero-section h1 {
-        font-family: 'Playfair Display', serif;
-        font-size: 38px;
-        font-weight: 700;
-        margin: 0;
-        color: #ffffff;
-    }
-    .hero-section p {
-        font-size: 16px;
-        color: #f5f3ff;
-        max-width: 650px;
-        margin: 10px auto 0 auto;
+    .hero-section h1, .hero-section p, .hero-section div {
+        color: #ffffff !important;
     }
     .site-card {
         background: #ffffff;
@@ -117,13 +136,13 @@ st.markdown("""
     .site-card h3 {
         font-family: 'Playfair Display', serif;
         font-size: 20px;
-        color: #3b0764;
+        color: #3b0764 !important;
         margin: 8px 0;
     }
     .card-price-value {
         font-size: 26px;
         font-weight: 700;
-        color: #581c87;
+        color: #581c87 !important;
         margin: 10px 0;
     }
     .policy-card {
@@ -135,7 +154,10 @@ st.markdown("""
         margin: 15px 0;
         font-size: 14px;
         line-height: 1.6;
-        color: #3b0764;
+        color: #3b0764 !important;
+    }
+    .policy-card strong, .policy-card b {
+        color: #4a044e !important;
     }
     .modal-sucesso-box {
         text-align: center;
@@ -143,7 +165,7 @@ st.markdown("""
     }
     .modal-sucesso-box h2 {
         font-family: 'Playfair Display', serif;
-        color: #4c1d95;
+        color: #4c1d95 !important;
         margin-top: 10px;
     }
     .modal-detalhe {
@@ -166,14 +188,14 @@ st.markdown("""
     .metric-label {
         font-size: 13px;
         font-weight: 600;
-        color: #7e22ce;
+        color: #7e22ce !important;
         text-transform: uppercase;
         letter-spacing: 1px;
     }
     .metric-value {
         font-size: 26px;
         font-weight: 700;
-        color: #3b0764;
+        color: #3b0764 !important;
         margin: 6px 0 2px 0;
     }
     .stButton > button {
@@ -198,7 +220,7 @@ st.markdown("""
     .site-footer {
         text-align: center;
         padding: 30px 20px;
-        color: #7e22ce;
+        color: #7e22ce !important;
         font-size: 13px;
         border-top: 1px solid #f3e8ff;
         margin-top: 50px;
@@ -253,7 +275,7 @@ def gerar_protocolo(agendamento_id: int, data_str: str) -> str:
     dt_limpa = data_str[:10].replace("-", "")
     return f"BA-{dt_limpa}-{int(agendamento_id):04d}"
 
-# MODAL - AGENDAMENTO DE CLIENTE COM INFORMAÇÕES DE SINAL E WHATSAPP
+# MODAL - AGENDAMENTO DE CLIENTE COM PROTOCOLO E WHATSAPP
 @st.dialog("✨ Quase Lá! Confirme com o Sinal")
 def exibir_modal_confirmacao(nome, servico, data_hora, total_val, restante_val, protocolo):
     msg_zap = (
@@ -519,20 +541,17 @@ if aba_selecionada == "✨ Início & Agendamento":
             st.write("")
             st.markdown("#### 3. Dados Pessoais, Sinal & Pagamento")
             
-            # Adicional de Decoração
             add_decoracao = st.checkbox("✨ Adicionar Decoração (+ R$ 10,00)", value=False)
             
             preco_base = float(srv_obj["preco"])
             total_servico = preco_base + (10.00 if add_decoracao else 0.00)
             restante_estudio = max(0.00, total_servico - VALOR_SINAL)
             
-            # Resumo em métricas elegantes
             col_m1, col_m2, col_m3 = st.columns(3)
             col_m1.metric("Valor Total", f"R$ {total_servico:.2f}")
             col_m2.metric("Sinal de Garantia", f"R$ {VALOR_SINAL:.2f}")
             col_m3.metric("Restante no Estúdio", f"R$ {restante_estudio:.2f}")
             
-            # Políticas da Rafaella
             st.markdown("""
                 <div class="policy-card">
                     <strong>🔴 IMPORTANTE — Regras do Sinal & Agendamento:</strong><br>
@@ -544,7 +563,6 @@ if aba_selecionada == "✨ Início & Agendamento":
                 </div>
             """, unsafe_allow_html=True)
             
-            # Formas de Pagamento do Sinal
             st.markdown("##### 💳 Pagar Sinal de Garantia (R$ 20,00)")
             col_pag1, col_pag2 = st.columns(2)
             with col_pag1:
@@ -629,12 +647,10 @@ elif aba_selecionada == "🎓 Academy (Cursos)":
         for idx, turma in enumerate(turmas):
             t_id = turma["id"]
             
-            # Buscar titulares
             res_titulares = supabase.table("inscricoes_curso").select("id").eq("turma_id", t_id).eq("tipo_vaga", "Titular").execute()
             titulares_count = len(res_titulares.data) if res_titulares.data else 0
             vagas_restantes = max(0, turma["vagas_limite"] - titulares_count)
 
-            # Buscar reservas
             res_reserva = supabase.table("inscricoes_curso").select("id").eq("turma_id", t_id).eq("tipo_vaga", "Reserva").execute()
             reserva_count = len(res_reserva.data) if res_reserva.data else 0
 
