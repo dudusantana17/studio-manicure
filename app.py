@@ -43,6 +43,8 @@ if "scroll_para_topo" not in st.session_state:
     st.session_state["scroll_para_topo"] = False
 if "conf_curso_pendente" not in st.session_state:
     st.session_state["conf_curso_pendente"] = None
+if "recusa_pendente" not in st.session_state:
+    st.session_state["recusa_pendente"] = None
 
 # =======================================================
 # CSS VISUAL COM BLINDAGEM TOTAL (MODO ESCURO / MOBILE)
@@ -101,7 +103,7 @@ st.markdown("""
         border-radius: 10px !important;
     }
 
-    /* 6. BLINDAGEM DO MENU SUSPENSO ABERTO (DROPDOWN / POPOVER) */
+    /* 6. Blindagem do menu suspenso aberto (Dropdown / Popover) */
     [data-baseweb="popover"], 
     [data-baseweb="popover"] > div, 
     [data-baseweb="menu"], 
@@ -113,7 +115,6 @@ st.markdown("""
         box-shadow: 0 10px 25px rgba(88, 28, 135, 0.15) !important;
     }
 
-    /* Itens da lista do menu */
     li[role="option"], 
     li[role="option"] > div,
     div[role="option"],
@@ -125,7 +126,6 @@ st.markdown("""
         font-size: 14px !important;
     }
 
-    /* Item selecionado ou com foco */
     li[role="option"]:hover, 
     li[aria-selected="true"],
     [data-baseweb="menu"] li:hover {
@@ -134,7 +134,6 @@ st.markdown("""
         -webkit-text-fill-color: #6b21a8 !important;
     }
 
-    /* Ícones dentro dos campos (setinha do selectbox e calendário) */
     [data-baseweb="select"] svg, div[data-testid="stDateInput"] svg {
         fill: #581c87 !important;
     }
@@ -867,6 +866,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
             st.divider()
 
+            # ALERTA DE APROVAÇÃO PENDENTE DE NOTIFICAÇÃO NO WHATSAPP
             if "confirmacao_pendente" in st.session_state and st.session_state["confirmacao_pendente"]:
                 d = st.session_state["confirmacao_pendente"]
                 msg_conf = (
@@ -897,6 +897,40 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
                 st.divider()
 
+            # ALERTA DE RECUSA PENDENTE DE NOTIFICAÇÃO NO WHATSAPP
+            if "recusa_pendente" in st.session_state and st.session_state["recusa_pendente"]:
+                r = st.session_state["recusa_pendente"]
+                msg_rec = (
+                    f"Olá {r['nome']}, aqui é do *Studio Belleza & Arte*.\n\n"
+                    f"Infelizmente não foi possível confirmar o seu agendamento para o procedimento *{r['servico']}* "
+                    f"marcado para *{r['data_hora']}* (Protocolo: {r['protocolo']}).\n\n"
+                    f"📌 *Motivo:* {r['motivo']}\n\n"
+                    f"Se desejar reagendar em outro dia ou horário, estamos à disposição no site ou por aqui! ✨"
+                )
+                link_zap_recusa = f"https://api.whatsapp.com/send?phone=55{r['telefone']}&text={urllib.parse.quote(msg_rec)}"
+
+                st.markdown(f"""
+                    <div style="background: #fef2f2; border: 2px solid #fca5a5; border-radius: 16px; padding: 18px; margin-bottom: 20px;">
+                        <h4 style="color: #b91c1c; margin: 0 0 6px 0;">⚠️ Agendamento de {r['nome']} Recusado</h4>
+                        <div style="font-size: 14px; color: #7f1d1d; margin-bottom: 6px;">
+                            Protocolo: <b>{r['protocolo']}</b>
+                        </div>
+                        <div style="font-size: 14px; color: #7f1d1d; margin-bottom: 10px;">
+                            Motivo registrado: <i>"{r['motivo']}"</i>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+                col_zr1, col_zr2 = st.columns([3, 1])
+                with col_zr1:
+                    st.link_button(f"📲 Avisar {r['nome']} no WhatsApp (com Motivo)", link_zap_recusa)
+                with col_zr2:
+                    if st.button("Fechar Alerta", key="btn_fechar_zap_recusa"):
+                        st.session_state["recusa_pendente"] = None
+                        st.rerun()
+
+                st.divider()
+
             st.markdown("#### ⏳ Solicitações Pendentes de Agendamento")
             try:
                 res_pendentes = supabase.table("agendamentos").select(
@@ -917,16 +951,24 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                     dh_formatada = ag["data_hora"][:16].replace("T", " ")
                     prot_ag = gerar_protocolo(ag_id, ag["data_hora"])
 
-                    col_info, col_acao = st.columns([3, 2])
-                    with col_info:
-                        st.markdown(f"💅 **{c_nome}** — *{s_nome}*")
-                        st.caption(f"🔖 Protocolo: `{prot_ag}` | 📅 Data/Hora: **{dh_formatada}** | WhatsApp: **{c_tel}**")
-                        if ag.get("observacoes"):
-                            st.caption(f"Obs: {ag['observacoes']}")
+                    st.markdown(f"💅 **{c_nome}** — *{s_nome}*")
+                    st.caption(f"🔖 Protocolo: `{prot_ag}` | 📅 Data/Hora: **{dh_formatada}** | WhatsApp: **{c_tel}**")
+                    if ag.get("observacoes"):
+                        st.caption(f"Obs da cliente: {ag['observacoes']}")
 
-                    with col_acao:
-                        btn1, btn2 = st.columns(2)
-                        with btn1:
+                    col_motivo, col_botoes = st.columns([3, 2])
+                    with col_motivo:
+                        motivo_recusa = st.text_input(
+                            "Motivo da recusa (se for recusar):",
+                            placeholder="Ex: Horário reservado para manutenção, comprovante não enviado...",
+                            key=f"motivo_{ag_id}"
+                        )
+
+                    with col_botoes:
+                        st.write("")
+                        st.write("")
+                        btn_aprovar, btn_recusar = st.columns(2)
+                        with btn_aprovar:
                             if st.button("Aprovar", key=f"ap_{ag_id}", use_container_width=True):
                                 supabase.table("agendamentos").update({"status": "Confirmado"}).eq("id", ag_id).execute()
                                 st.session_state["confirmacao_pendente"] = {
@@ -938,14 +980,26 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                                 }
                                 st.toast("Horário Aprovado!")
                                 st.rerun()
-                        with btn2:
+                        with btn_recusar:
                             if st.button("Recusar", key=f"rec_{ag_id}", use_container_width=True):
-                                supabase.table("agendamentos").update({"status": "Cancelado"}).eq("id", ag_id).execute()
+                                motivo_final = motivo_recusa.strip() if motivo_recusa.strip() else "Horário indisponível ou comprovante do sinal não validado."
+                                supabase.table("agendamentos").update({
+                                    "status": "Cancelado",
+                                    "observacoes": f"[RECUSADO: {motivo_final}] " + (ag.get("observacoes") or "")
+                                }).eq("id", ag_id).execute()
+
+                                st.session_state["recusa_pendente"] = {
+                                    "protocolo": prot_ag,
+                                    "nome": c_nome,
+                                    "telefone": c_tel,
+                                    "servico": s_nome,
+                                    "data_hora": dh_formatada,
+                                    "motivo": motivo_final
+                                }
                                 st.toast("Agendamento recusado e horário liberado!")
                                 st.rerun()
-                    st.write("")
+                    st.divider()
 
-            st.divider()
             st.markdown("#### ✅ Horários Confirmados (Atendimentos Agendados)")
             try:
                 res_confirmados = supabase.table("agendamentos").select(
