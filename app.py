@@ -51,7 +51,7 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
 
-    /* 1. Blindagem de fundo e cor base contra dark mode forçado do telemóvel */
+    /* 1. Blindagem de fundo e cor base contra dark mode forçado */
     :root, html, body, [data-testid="stAppViewContainer"], .stApp {
         color-scheme: light !important;
         supported-color-schemes: light !important;
@@ -70,48 +70,71 @@ st.markdown("""
         color: #2e1065 !important;
     }
 
-    /* 4. Rótulos e títulos de formulários (Inputs, Selects, Radios) */
+    /* 4. Rótulos e títulos de formulários */
     .stTextInput label, .stDateInput label, .stSelectbox label, 
     .stRadio label, .stCheckbox label, .stTextArea label, .stTimeInput label {
         color: #2e1065 !important;
         font-weight: 700 !important;
     }
 
-    /* 5. Textos de opções (Labels de rádio de horário e checkboxes) */
+    /* 5. Textos de opções (Rádios e checkboxes) */
     [data-testid="stMarkdownContainer"] p, [data-testid="stWidgetLabel"] p {
         color: #2e1065 !important;
         font-weight: 600 !important;
     }
 
-    /* 6. Campos de preenchimento (Inputs brancos com texto escuro garantido) */
+    /* 6. Campos de preenchimento brancos e limpos */
     input, textarea, [data-baseweb="input"], [data-baseweb="select"], [data-baseweb="base-input"] {
         background-color: #ffffff !important;
         color: #1e1b4b !important;
         -webkit-text-fill-color: #1e1b4b !important;
-        border: 1px solid #d8b4fe !important;
-        border-radius: 8px !important;
+        border: 1.5px solid #d8b4fe !important;
+        border-radius: 10px !important;
     }
 
-    /* Texto digitado ou selecionado dentro do campo */
     input::placeholder, textarea::placeholder {
         color: #7c3aed !important;
         opacity: 0.6 !important;
     }
 
-    /* Menus suspensos / Caixas de seleção */
-    [data-baseweb="popover"], [data-baseweb="menu"], ul[role="listbox"] {
-        background-color: #ffffff !important;
-    }
-    li[role="option"] {
-        color: #1e1b4b !important;
-        background-color: #ffffff !important;
-    }
-    li[role="option"]:hover, li[aria-selected="true"] {
-        background-color: #f3e8ff !important;
-        color: #581c87 !important;
+    /* 7. Blindagem dos Botões (incluindo Form Submit) */
+    .stButton > button, div[data-testid="stFormSubmitButton"] > button {
+        background: linear-gradient(135deg, #7e22ce 0%, #9333ea 100%) !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        font-weight: 700 !important;
+        font-size: 16px !important;
+        border-radius: 50px !important;
+        padding: 0.75rem 1.8rem !important;
+        border: 1px solid #c084fc !important;
+        box-shadow: 0 8px 22px rgba(126, 34, 206, 0.3) !important;
+        width: 100% !important;
     }
 
-    /* 7. Cartões e componentes estruturais */
+    .stButton > button p, div[data-testid="stFormSubmitButton"] > button p {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        font-weight: 700 !important;
+    }
+
+    .stButton > button:hover, div[data-testid="stFormSubmitButton"] > button:hover {
+        background: linear-gradient(135deg, #6b21a8 0%, #7e22ce 100%) !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+    }
+
+    .stLinkButton > a {
+        background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        font-weight: 700 !important;
+        border-radius: 50px !important;
+        padding: 0.85rem 2rem !important;
+        border: none !important;
+        display: inline-flex !important;
+    }
+
+    /* 8. Componentes estruturais e cartões */
     .site-nav {
         display: flex;
         justify-content: space-between;
@@ -184,23 +207,6 @@ st.markdown("""
     .policy-card strong, .policy-card b {
         color: #4a044e !important;
     }
-    .modal-sucesso-box {
-        text-align: center;
-        padding: 10px;
-    }
-    .modal-sucesso-box h2 {
-        font-family: 'Playfair Display', serif;
-        color: #4c1d95 !important;
-        margin-top: 10px;
-    }
-    .modal-detalhe {
-        background: #faf5ff;
-        border: 1px solid #e9d5ff;
-        border-radius: 12px;
-        padding: 16px;
-        margin: 18px 0;
-        text-align: left;
-    }
     .metric-box {
         background: #ffffff !important;
         border-radius: 16px;
@@ -223,26 +229,22 @@ st.markdown("""
         color: #3b0764 !important;
         margin: 6px 0 2px 0;
     }
-    .stButton > button {
-        background: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%) !important;
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-        font-weight: 600 !important;
-        font-size: 15px !important;
-        border-radius: 50px !important;
-        padding: 0.65rem 1.6rem !important;
-        border: none !important;
-        box-shadow: 0 8px 20px rgba(126, 34, 206, 0.25) !important;
+    .modal-sucesso-box {
+        text-align: center;
+        padding: 10px;
     }
-    .stLinkButton > a {
-        background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important;
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-        font-weight: 700 !important;
-        border-radius: 50px !important;
-        padding: 0.85rem 2rem !important;
-        border: none !important;
-        display: inline-flex !important;
+    .modal-sucesso-box h2 {
+        font-family: 'Playfair Display', serif;
+        color: #4c1d95 !important;
+        margin-top: 10px;
+    }
+    .modal-detalhe {
+        background: #faf5ff;
+        border: 1px solid #e9d5ff;
+        border-radius: 12px;
+        padding: 16px;
+        margin: 18px 0;
+        text-align: left;
     }
     .site-footer {
         text-align: center;
@@ -562,7 +564,7 @@ if aba_selecionada == "✨ Início & Agendamento":
                     horario_valido = True
 
         # =======================================================
-        # 3. CONFIRMAÇÃO COM REGRAS DE SINAL & PAGAMENTO
+        # 3. CONFIRMAÇÃO COM SINAL & PAGAMENTO (SEM NASCIMENTO)
         # =======================================================
         if horario_valido and horario_selecionado and srv_obj:
             st.write("")
@@ -602,15 +604,10 @@ if aba_selecionada == "✨ Início & Agendamento":
                 col_c1, col_c2 = st.columns(2)
                 with col_c1:
                     nome_c = st.text_input("Seu Nome Completo:")
-                    tel_c = st.text_input("WhatsApp (DDD + Número):", placeholder="Ex: 21969861082")
                 with col_c2:
-                    nasc_c = st.date_input(
-                        "Data de Nascimento:",
-                        value=datetime(2000, 1, 1),
-                        min_value=datetime(1940, 1, 1),
-                        format="DD/MM/YYYY"
-                    )
-                    observacao = st.text_area("Observações adicionais (opcional):", placeholder="Ex: Unha roída, preferência por formato amendoado...")
+                    tel_c = st.text_input("WhatsApp (DDD + Número):", placeholder="Ex: 21969861082")
+                
+                observacao = st.text_area("Observações adicionais (opcional):", placeholder="Ex: Unha roída, preferência por formato amendoado...")
 
                 aceitou_termos = st.checkbox("Li e concordo integralmente com as regras de agendamento e política do sinal.")
 
@@ -625,8 +622,7 @@ if aba_selecionada == "✨ Início & Agendamento":
                 else:
                     supabase.table("clientes").upsert({
                         "nome": nome_c.strip(),
-                        "telefone": tel_limpo,
-                        "data_nascimento": str(nasc_c)
+                        "telefone": tel_limpo
                     }, on_conflict="telefone").execute()
 
                     res_cli = supabase.table("clientes").select("id").eq("telefone", tel_limpo).execute()
