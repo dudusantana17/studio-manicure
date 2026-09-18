@@ -45,54 +45,79 @@ if "conf_curso_pendente" not in st.session_state:
     st.session_state["conf_curso_pendente"] = None
 
 # =======================================================
-# CSS VISUAL COM BLINDAGEM CONTRA MODO ESCURO
+# CSS VISUAL COM BLINDAGEM TOTAL (MODO ESCURO / MOBILE)
 # =======================================================
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
 
-    /* Força todas as fontes e cores base */
-    html, body, [class*="css"], .stApp {
-        font-family: 'Plus Jakarta Sans', sans-serif !important;
+    /* 1. Blindagem de fundo e cor base contra dark mode forçado do telemóvel */
+    :root, html, body, [data-testid="stAppViewContainer"], .stApp {
+        color-scheme: light !important;
+        supported-color-schemes: light !important;
         background-color: #faf5ff !important;
         color: #2e1065 !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
     }
 
-    /* Oculta barras padrão */
+    /* 2. Ocultação de elementos padrão da interface */
     footer {visibility: hidden; display: none !important;}
     [data-testid="stStatusWidget"] {visibility: hidden; display: none !important;}
     header {visibility: hidden; display: none !important;}
 
-    /* Blindagem para títulos e textos gerais */
-    h1, h2, h3, h4, h5, h6, p, span, label, div {
-        color: #2e1065;
+    /* 3. Forçar contraste escuro legível em todos os textos */
+    h1, h2, h3, h4, h5, h6, p, span, label, div, small {
+        color: #2e1065 !important;
     }
 
-    /* Rótulos de campos (inputs, selects, radio, datas) */
+    /* 4. Rótulos e títulos de formulários (Inputs, Selects, Radios) */
     .stTextInput label, .stDateInput label, .stSelectbox label, 
     .stRadio label, .stCheckbox label, .stTextArea label, .stTimeInput label {
+        color: #2e1065 !important;
+        font-weight: 700 !important;
+    }
+
+    /* 5. Textos de opções (Labels de rádio de horário e checkboxes) */
+    [data-testid="stMarkdownContainer"] p, [data-testid="stWidgetLabel"] p {
         color: #2e1065 !important;
         font-weight: 600 !important;
     }
 
-    /* Textos dentro de opções (rádio de horários e checkboxes) */
-    [data-testid="stMarkdownContainer"] p {
-        color: #2e1065 !important;
-    }
-
-    /* Campos de entrada e seleção */
-    input, textarea, [data-baseweb="select"] {
-        color: #2e1065 !important;
+    /* 6. Campos de preenchimento (Inputs brancos com texto escuro garantido) */
+    input, textarea, [data-baseweb="input"], [data-baseweb="select"], [data-baseweb="base-input"] {
         background-color: #ffffff !important;
+        color: #1e1b4b !important;
+        -webkit-text-fill-color: #1e1b4b !important;
         border: 1px solid #d8b4fe !important;
+        border-radius: 8px !important;
     }
 
+    /* Texto digitado ou selecionado dentro do campo */
+    input::placeholder, textarea::placeholder {
+        color: #7c3aed !important;
+        opacity: 0.6 !important;
+    }
+
+    /* Menus suspensos / Caixas de seleção */
+    [data-baseweb="popover"], [data-baseweb="menu"], ul[role="listbox"] {
+        background-color: #ffffff !important;
+    }
+    li[role="option"] {
+        color: #1e1b4b !important;
+        background-color: #ffffff !important;
+    }
+    li[role="option"]:hover, li[aria-selected="true"] {
+        background-color: #f3e8ff !important;
+        color: #581c87 !important;
+    }
+
+    /* 7. Cartões e componentes estruturais */
     .site-nav {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background: #ffffff;
-        padding: 18px 36px;
+        background: #ffffff !important;
+        padding: 18px 24px;
         border-radius: 20px;
         box-shadow: 0 10px 25px rgba(88, 28, 135, 0.05);
         border: 1px solid #f3e8ff;
@@ -100,7 +125,7 @@ st.markdown("""
     }
     .nav-brand {
         font-family: 'Playfair Display', serif;
-        font-size: 26px;
+        font-size: 24px;
         font-weight: 700;
         color: #581c87 !important;
     }
@@ -112,10 +137,9 @@ st.markdown("""
         letter-spacing: 2px;
     }
     .hero-section {
-        background: linear-gradient(135deg, #2e1065 0%, #581c87 50%, #7e22ce 100%);
+        background: linear-gradient(135deg, #2e1065 0%, #581c87 50%, #7e22ce 100%) !important;
         border-radius: 24px;
-        padding: 45px 32px;
-        color: #ffffff !important;
+        padding: 35px 24px;
         text-align: center;
         margin-bottom: 30px;
         box-shadow: 0 16px 36px -6px rgba(88, 28, 135, 0.35);
@@ -123,12 +147,13 @@ st.markdown("""
     }
     .hero-section h1, .hero-section p, .hero-section div {
         color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
     }
     .site-card {
-        background: #ffffff;
+        background: #ffffff !important;
         border: 1px solid #f3e8ff;
         border-radius: 18px;
-        padding: 24px;
+        padding: 22px;
         box-shadow: 0 8px 24px rgba(107, 33, 168, 0.05);
         border-top: 5px solid #7e22ce;
         margin-bottom: 20px;
@@ -140,13 +165,13 @@ st.markdown("""
         margin: 8px 0;
     }
     .card-price-value {
-        font-size: 26px;
+        font-size: 24px;
         font-weight: 700;
         color: #581c87 !important;
         margin: 10px 0;
     }
     .policy-card {
-        background: #ffffff;
+        background: #ffffff !important;
         border: 1px solid #e9d5ff;
         border-left: 5px solid #9333ea;
         border-radius: 14px;
@@ -177,7 +202,7 @@ st.markdown("""
         text-align: left;
     }
     .metric-box {
-        background: #ffffff;
+        background: #ffffff !important;
         border-radius: 16px;
         padding: 20px;
         border-left: 5px solid #7e22ce;
@@ -193,7 +218,7 @@ st.markdown("""
         letter-spacing: 1px;
     }
     .metric-value {
-        font-size: 26px;
+        font-size: 24px;
         font-weight: 700;
         color: #3b0764 !important;
         margin: 6px 0 2px 0;
@@ -201,6 +226,7 @@ st.markdown("""
     .stButton > button {
         background: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%) !important;
         color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
         font-weight: 600 !important;
         font-size: 15px !important;
         border-radius: 50px !important;
@@ -211,6 +237,7 @@ st.markdown("""
     .stLinkButton > a {
         background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important;
         color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
         font-weight: 700 !important;
         border-radius: 50px !important;
         padding: 0.85rem 2rem !important;
