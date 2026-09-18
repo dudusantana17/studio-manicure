@@ -51,7 +51,7 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
 
-    /* 1. Blindagem de fundo e cor base contra dark mode forçado */
+    /* 1. Forçar modo claro geral */
     :root, html, body, [data-testid="stAppViewContainer"], .stApp {
         color-scheme: light !important;
         supported-color-schemes: light !important;
@@ -60,30 +60,29 @@ st.markdown("""
         font-family: 'Plus Jakarta Sans', sans-serif !important;
     }
 
-    /* 2. Ocultação de elementos padrão da interface */
+    /* 2. Ocultação de menus padrão */
     footer {visibility: hidden; display: none !important;}
     [data-testid="stStatusWidget"] {visibility: hidden; display: none !important;}
     header {visibility: hidden; display: none !important;}
 
-    /* 3. Forçar contraste escuro legível em todos os textos */
+    /* 3. Forçar contraste escuro legível em textos */
     h1, h2, h3, h4, h5, h6, p, span, label, div, small {
         color: #2e1065 !important;
     }
 
-    /* 4. Rótulos e títulos de formulários */
+    /* 4. Rótulos de campos */
     .stTextInput label, .stDateInput label, .stSelectbox label, 
     .stRadio label, .stCheckbox label, .stTextArea label, .stTimeInput label {
         color: #2e1065 !important;
         font-weight: 700 !important;
     }
 
-    /* 5. Textos de opções (Rádios e checkboxes) */
     [data-testid="stMarkdownContainer"] p, [data-testid="stWidgetLabel"] p {
         color: #2e1065 !important;
         font-weight: 600 !important;
     }
 
-    /* 6. Campos de preenchimento brancos e limpos */
+    /* 5. Campos de Entrada (Inputs fechados) */
     input, textarea, 
     [data-baseweb="input"], 
     [data-baseweb="input"] > div, 
@@ -97,19 +96,46 @@ st.markdown("""
         border-color: #d8b4fe !important;
     }
 
-    /* Borda e canto arredondado específicos para os containers BaseWeb */
     [data-baseweb="input"], [data-baseweb="select"] {
         border: 1.5px solid #d8b4fe !important;
         border-radius: 10px !important;
     }
 
-    input::placeholder, textarea::placeholder {
-        color: #7c3aed !important;
-        opacity: 0.6 !important;
+    /* 6. BLINDAGEM DO MENU SUSPENSO ABERTO (DROPDOWN / POPOVER) */
+    [data-baseweb="popover"], 
+    [data-baseweb="popover"] > div, 
+    [data-baseweb="menu"], 
+    ul[role="listbox"],
+    div[role="listbox"] {
+        background-color: #ffffff !important;
+        border: 1.5px solid #c084fc !important;
+        border-radius: 12px !important;
+        box-shadow: 0 10px 25px rgba(88, 28, 135, 0.15) !important;
     }
 
-    /* Ícone de calendário dentro do DateInput */
-    div[data-testid="stDateInput"] svg {
+    /* Itens da lista do menu */
+    li[role="option"], 
+    li[role="option"] > div,
+    div[role="option"],
+    [data-baseweb="menu"] li {
+        background-color: #ffffff !important;
+        color: #2e1065 !important;
+        -webkit-text-fill-color: #2e1065 !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+    }
+
+    /* Item selecionado ou com foco */
+    li[role="option"]:hover, 
+    li[aria-selected="true"],
+    [data-baseweb="menu"] li:hover {
+        background-color: #f3e8ff !important;
+        color: #6b21a8 !important;
+        -webkit-text-fill-color: #6b21a8 !important;
+    }
+
+    /* Ícones dentro dos campos (setinha do selectbox e calendário) */
+    [data-baseweb="select"] svg, div[data-testid="stDateInput"] svg {
         fill: #581c87 !important;
     }
 
@@ -798,7 +824,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
             with col_cf2:
                 meses_atuais_str = dict_conf.get("mes_liberado", "2026-09,2026-10")
-                meses_atuais_lista = [m.strip() for m in meses_liberados_str.split(",") if m.strip()]
+                meses_atuais_lista = [m.strip() for m in meses_atuais_str.split(",") if m.strip()]
 
                 opcoes_meses = {
                     "2026-09": "Setembro / 2026",
