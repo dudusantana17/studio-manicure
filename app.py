@@ -7,17 +7,17 @@ st.set_page_config(
     page_title="Studio Belleza & Arte",
     page_icon="💅",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# Estilização visual (mantém o visual limpo sem cabeçalhos/rodapés do Streamlit)
+# Estilização visual limpa e elegante
 st.markdown("""
     <style>
     footer {visibility: hidden; display: none !important;}
     [data-testid="stStatusWidget"] {visibility: hidden; display: none !important;}
     header {visibility: hidden; display: none !important;}
     .main-title {
-        font-size: 2.2rem;
+        font-size: 2.3rem;
         font-weight: 700;
         color: #4A154B;
         text-align: center;
@@ -29,6 +29,15 @@ st.markdown("""
         text-align: center;
         margin-bottom: 25px;
     }
+    .card {
+        background: #FFFFFF;
+        border: 1px solid #EAEAEA;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.03);
+        margin-bottom: 20px;
+        min-height: 220px;
+    }
     .policy-box {
         background-color: #F8F9FA;
         padding: 16px;
@@ -38,187 +47,174 @@ st.markdown("""
         font-size: 0.95rem;
         line-height: 1.5;
     }
-    .card {
-        background: #FFFFFF;
-        border: 1px solid #EEE;
-        border-radius: 10px;
-        padding: 18px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        margin-bottom: 15px;
-    }
     </style>
 """, unsafe_allow_html=True)
 
 # Título Principal
 st.markdown('<div class="main-title">Studio Belleza & Arte</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Nail Design & Academy • Sistema Integrado</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Nail Design & Academy • Agendamento & Informações</div>', unsafe_allow_html=True)
 
-# --- NAVEGAÇÃO POR ABAS / MÓDULOS ---
-aba_agendamento, aba_servicos, aba_academy, aba_gestao = st.tabs([
-    "📅 Agendamento Online",
-    "💅 Catálogo de Serviços",
-    "🎓 Academy (Cursos)",
-    "🔒 Acesso Gestora"
-])
-
-# Constantes da Rafaella
-SERVICOS = {
-    "Alongamento de unhas (Gel Moldado)": 150.00,
-    "Manutenção de Unha em Gel": 100.00,
-    "Esmaltação em gel": 70.00,
-    "Pedicure simples": 30.00
+# --- DADOS E CONSTANTES ---
+SERVICOS_INFO = {
+    "Alongamento de unhas (Gel Moldado)": {
+        "preco": 150.00,
+        "tempo": "120 min",
+        "desc": "Alongamento estruturado respeitando a anatomia natural, com acabamento fino, alta resistência e aspecto impecável."
+    },
+    "Manutenção de Unha em Gel": {
+        "preco": 100.00,
+        "tempo": "90 min",
+        "desc": "Nivelamento da estrutura, reforço do ponto de tensão e acabamento para manter seu alongamento sempre seguro."
+    },
+    "Esmaltação em gel": {
+        "preco": 70.00,
+        "tempo": "60 min",
+        "desc": "Unhas secas instantaneamente na cabine com brilho espelhado e durabilidade prolongada de até 20 dias sem lascar."
+    },
+    "Pedicure simples": {
+        "preco": 30.00,
+        "tempo": "40 min",
+        "desc": "Higienização profunda, cutilagem técnica delicada e acabamento tradicional para o cuidado e estética dos pés."
+    }
 }
+
 VALOR_SINAL = 20.00
 CHAVE_PIX = "21969861082"
 BENEFICIARIO = "Rafaella Aquino – Stone IP S.A"
 LINK_CARTAO = "https://payment-link-v3.ton.com.br/pl_3dPKpGv5Zrb9l9aH6tjlw1agNjLX0m4D"
 WHATSAPP_NUMERO = "5521969861082"
 
+# Controle de estado para saber qual serviço foi clicado
+if "servico_selecionado" not in st.session_state:
+    st.session_state["servico_selecionado"] = None
+
+# --- NAVEGAÇÃO SUPERIOR ---
+aba_vitrine, aba_academy, aba_gestao = st.tabs([
+    "💅 Catálogo de Serviços",
+    "🎓 Academy (Cursos)",
+    "🔒 Acesso Gestora"
+])
+
 # =========================================================
-# ABA 1: AGENDAMENTO ONLINE (COM AS REGRAS E POLÍTICA)
+# ABA 1: CATÁLOGO DE SERVIÇOS (VITRINE COM BOTÕES DE AGENDAR)
 # =========================================================
-with aba_agendamento:
-    st.subheader("Reserve o seu Horário")
-    
-    col_cli1, col_cli2 = st.columns(2)
-    with col_cli1:
-        nome_cliente = st.text_input("Nome completo:")
-    with col_cli2:
-        telefone_cliente = st.text_input("WhatsApp com DDD (ex: 21969861082):")
+with aba_vitrine:
+    st.subheader("Procedimentos Disponíveis")
+    st.write("Escolha o procedimento desejado para abrir os horários e concluir seu agendamento:")
 
-    servicos_selecionados = st.multiselect(
-        "Selecione os procedimentos desejados:",
-        options=list(SERVICOS.keys()),
-        default=["Alongamento de unhas (Gel Moldado)"]
-    )
+    col1, col2 = st.columns(2)
+    servicos_nomes = list(SERVICOS_INFO.keys())
 
-    add_decoracao = st.checkbox("Adicionar Decoração (+ R$ 10,00)")
-
-    col_d, col_h = st.columns(2)
-    with col_d:
-        data_agendamento = st.date_input("Escolha a data:", min_value=date.today())
-    with col_h:
-        hora_agendamento = st.time_input("Escolha o horário:")
-
-    # Cálculo dos valores
-    total_servicos = sum([SERVICOS[s] for s in servicos_selecionados])
-    if add_decoracao:
-        total_servicos += 10.00
-    valor_restante = max(0.00, total_servicos - VALOR_SINAL)
-
-    st.markdown("---")
-    st.markdown("#### Resumo do Atendimento")
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total do Atendimento", f"R$ {total_servicos:.2f}")
-    c2.metric("Sinal de Garantia (Trava)", f"R$ {VALOR_SINAL:.2f}")
-    c3.metric("Restante no Estúdio", f"R$ {valor_restante:.2f}")
-
-    st.markdown("""
-    <div class="policy-box">
-        <strong>🔴 IMPORTANTE — Regras de Agendamento e Sinal:</strong><br>
-        • Sua vaga só estará garantida após a confirmação do pagamento do sinal de <strong>R$ 20,00</strong>;<br>
-        • O sinal é válido por 30 dias e intransferível;<br>
-        • Reagendamentos são permitidos com no mínimo 24h de antecedência;<br>
-        • O sinal não é devolvido em caso de desistência, cancelamento ou falta;<br>
-        • Tolerância máxima de 10 minutos para atrasos.
-    </div>
-    """, unsafe_allow_html=True)
-
-    aceitou_termos = st.checkbox("Li e concordo com as regras de agendamento e política do sinal.")
-
-    if aceitou_termos and len(servicos_selecionados) > 0 and nome_cliente.strip():
-        st.markdown("---")
-        st.markdown("#### Pagamento do Sinal (R$ 20,00)")
+    for idx, nome_serv in enumerate(servicos_nomes):
+        dados = SERVICOS_INFO[nome_serv]
+        coluna = col1 if idx % 2 == 0 else col2
         
-        col_pay1, col_pay2 = st.columns(2)
-        with col_pay1:
-            st.info(f"**Chave PIX:** `{CHAVE_PIX}`  \n**Favorecido:** {BENEFICIARIO}")
-        with col_pay2:
-            st.write("Prefere pagar com cartão?")
-            st.link_button("💳 Pagar Sinal no Cartão (Ton)", LINK_CARTAO)
+        with coluna:
+            st.markdown(f"""
+            <div class="card">
+                <h4 style="color: #4A154B; margin-bottom: 5px;">✨ {nome_serv}</h4>
+                <p style="color: #555; font-size: 0.95rem;">{dados['desc']}</p>
+                <p>⏱️ <strong>Duração:</strong> {dados['tempo']} &nbsp;|&nbsp; 💰 <strong>Valor:</strong> R$ {dados['preco']:.2f}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            if st.button(f"📅 Agendar {nome_serv}", key=f"btn_{idx}", use_container_width=True):
+                st.session_state["servico_selecionado"] = nome_serv
 
-        # Montagem do WhatsApp
-        data_f = data_agendamento.strftime("%d/%m/%Y")
-        hora_f = hora_agendamento.strftime("%H:%M")
-        procs_f = ", ".join(servicos_selecionados)
-        if add_decoracao:
-            procs_f += " + Decoração"
+    # --- MODAL / SEÇÃO DE AGENDAMENTO (SÓ APARECE AO CLICAR) ---
+    if st.session_state["servico_selecionado"]:
+        serv_atual = st.session_state["servico_selecionado"]
+        preco_base = SERVICOS_INFO[serv_atual]["preco"]
 
-        msg = (
-            f"Olá Rafaella! Acabei de agendar pelo site:\n\n"
-            f"👤 *Cliente:* {nome_cliente}\n"
-            f"📅 *Data:* {data_f} às {hora_f}\n"
-            f"💅 *Procedimentos:* {procs_f}\n"
-            f"💰 *Total:* R$ {total_servicos:.2f} (Sinal: R$ {VALOR_SINAL:.2f} | Restante: R$ {valor_restante:.2f})\n\n"
-            f"Estou enviando o comprovante do sinal de R$ 20,00 em anexo!"
-        )
-        url_wa = f"https://wa.me/{WHATSAPP_NUMERO}?text={urllib.parse.quote(msg)}"
+        st.markdown("---")
+        st.markdown(f"### 📝 Agendamento: <span style='color:#7B1FA2'>{serv_atual}</span>", unsafe_allow_html=True)
 
-        st.success("Tudo certo! Clique abaixo para confirmar seu agendamento no WhatsApp:")
-        st.link_button("📲 Enviar Comprovante no WhatsApp", url_wa)
-    else:
-        st.info("Informe seu nome, marque os procedimentos e confirme o aceite das regras para liberar a etapa do sinal.")
+        col_cli1, col_cli2 = st.columns(2)
+        with col_cli1:
+            nome_cliente = st.text_input("Seu Nome Completo:")
+        with col_cli2:
+            telefone_cliente = st.text_input("WhatsApp com DDD (ex: 21969861082):")
+
+        col_d, col_h, col_dec = st.columns([1.2, 1, 1.2])
+        with col_d:
+            data_agendamento = st.date_input("Escolha a Data:", min_value=date.today())
+        with col_h:
+            hora_agendamento = st.time_input("Escolha o Horário:")
+        with col_dec:
+            st.write("Adicionais:")
+            add_decoracao = st.checkbox("Adicionar Decoração (+ R$ 10,00)")
+
+        # Cálculo
+        total_servico = preco_base + (10.00 if add_decoracao else 0.00)
+        valor_restante = max(0.00, total_servico - VALOR_SINAL)
+
+        # Resumo Financeiro
+        st.markdown("#### Resumo do Atendimento")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total dos Serviços", f"R$ {total_servico:.2f}")
+        c2.metric("Sinal de Garantia (Trava)", f"R$ {VALOR_SINAL:.2f}")
+        c3.metric("Restante a pagar no Estúdio", f"R$ {valor_restante:.2f}")
+
+        # Caixa com as Regras
+        st.markdown("""
+        <div class="policy-box">
+            <strong>🔴 IMPORTANTE — Regras de Agendamento e Sinal:</strong><br>
+            • Sua vaga só é garantida após o pagamento do sinal de <strong>R$ 20,00</strong>;<br>
+            • O sinal é válido por 30 dias e intransferível;<br>
+            • Reagendamentos são aceitos com no mínimo 24h de antecedência;<br>
+            • O sinal não é devolvido em caso de cancelamento ou falta;<br>
+            • Tolerância máxima de 10 minutos para atrasos.
+        </div>
+        """, unsafe_allow_html=True)
+
+        aceitou_termos = st.checkbox("Li e concordo integralmente com as regras de agendamento e o sinal.")
+
+        if aceitou_termos and nome_cliente.strip():
+            st.markdown("#### Pagamento do Sinal (R$ 20,00)")
+            col_pix, col_ton = st.columns(2)
+            with col_pix:
+                st.info(f"**Chave PIX:** `{CHAVE_PIX}`  \n**Favorecido:** {BENEFICIARIO}")
+            with col_ton:
+                st.write("Pagamento via Cartão:")
+                st.link_button("💳 Pagar Sinal no Cartão de Crédito (Ton)", LINK_CARTAO, use_container_width=True)
+
+            data_f = data_agendamento.strftime("%d/%m/%Y")
+            hora_f = hora_agendamento.strftime("%H:%M")
+            proc_f = serv_atual + (" + Decoração" if add_decoracao else "")
+
+            msg = (
+                f"Olá Rafaella! Acabei de agendar pelo site:\n\n"
+                f"👤 *Cliente:* {nome_cliente}\n"
+                f"📅 *Data:* {data_f} às {hora_f}\n"
+                f"💅 *Procedimento:* {proc_f}\n"
+                f"💰 *Total:* R$ {total_servico:.2f} (Sinal: R$ {VALOR_SINAL:.2f} | Restante: R$ {valor_restante:.2f})\n\n"
+                f"Estou enviando em anexo o comprovante do sinal de R$ 20,00 para garantir minha vaga!"
+            )
+            url_wa = f"https://wa.me/{WHATSAPP_NUMERO}?text={urllib.parse.quote(msg)}"
+
+            st.write("")
+            st.success("Tudo preenchido! Clique no botão abaixo para abrir o WhatsApp da Rafaella e anexar o comprovante:")
+            st.link_button("📲 Enviar Comprovante no WhatsApp", url_wa, use_container_width=True)
+        else:
+            st.warning("Preencha seu nome e aceite as regras acima para liberar os links de pagamento do sinal.")
 
 # =========================================================
-# ABA 2: CATÁLOGO DE SERVIÇOS E PROCEDIMENTOS
-# =========================================================
-with aba_servicos:
-    st.subheader("Procedimentos do Estúdio")
-    st.write("Conheça as especialidades oferecidas pelo Studio Belleza & Arte:")
-
-    col_s1, col_s2 = st.columns(2)
-    with col_s1:
-        st.markdown("""
-        <div class="card">
-            <h4>✨ Alongamento em Gel Moldado</h4>
-            <p>Alongamento estruturado respeitando a anatomia da lâmina natural. Acabamento fino, resistente e com aspecto super natural.</p>
-            <p><strong>Duração média:</strong> 120 min | <strong>Investimento:</strong> R$ 150,00</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("""
-        <div class="card">
-            <h4>🔄 Manutenção de Unha em Gel</h4>
-            <p>Nivelamento, troca de estrutura e fortalecimento para manter seu alongamento sempre impecável e seguro.</p>
-            <p><strong>Duração média:</strong> 90 min | <strong>Investimento:</strong> R$ 100,00</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_s2:
-        st.markdown("""
-        <div class="card">
-            <h4>💎 Esmaltação em Gel</h4>
-            <p>Unhas secas instantaneamente na cabine com brilho espelhado e durabilidade estendida de 15 a 25 dias sem lascar.</p>
-            <p><strong>Duração média:</strong> 60 min | <strong>Investimento:</strong> R$ 70,00</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("""
-        <div class="card">
-            <h4>🦶 Pedicure Simples & Spa dos Pés</h4>
-            <p>Higienização profunda, cutilagem alinhada e esmaltação tradicional para o bem-estar e estética dos pés.</p>
-            <p><strong>Duração média:</strong> 40 min | <strong>Investimento:</strong> R$ 30,00</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-# =========================================================
-# ABA 3: ACADEMY (CURSOS & TREINAMENTOS)
+# ABA 2: ACADEMY (CURSOS & FORMAÇÃO)
 # =========================================================
 with aba_academy:
     st.subheader("Cursos Profissionalizantes — Rafaella Aquino")
-    st.write("Torne-se uma Nail Designer reconhecida com as técnicas mais atualizadas do mercado.")
+    st.write("Capacite-se na área da beleza e aprenda as técnicas de Nail Design mais requisitadas.")
 
     col_cur1, col_cur2 = st.columns(2)
     with col_cur1:
         st.markdown("""
         <div class="card">
-            <h4>🎓 Formação Nail Designer Iniciante</h4>
+            <h4 style="color: #4A154B;">🎓 Formação Nail Designer Iniciante</h4>
             <ul>
                 <li>Anatomia das unhas e biossegurança completa;</li>
                 <li>Técnica de gel moldado sem segredos;</li>
-                <li>Controle de produto e lixamento técnico simétrico;</li>
-                <li>Certificado reconhecido + Suporte pós-curso.</li>
+                <li>Controle de produto e lixamento simétrico;</li>
+                <li>Certificado reconhecido + Suporte individual pós-curso.</li>
             </ul>
             <p><strong>Carga horária:</strong> 16h presenciais (Vagas limitadas)</p>
         </div>
@@ -227,40 +223,36 @@ with aba_academy:
     with col_cur2:
         st.markdown("""
         <div class="card">
-            <h4>⚡ Especialização: Rapidez em Mesa & Manutenção</h4>
+            <h4 style="color: #4A154B;">⚡ Especialização: Rapidez em Mesa & Manutenção</h4>
             <ul>
                 <li>Redução do tempo de atendimento para até 60 minutos;</li>
                 <li>Técnicas com brocas de tungstênio e diamantadas;</li>
-                <li>Precificação e gestão da agenda de clientes.</li>
+                <li>Precificação e gestão de clientes.</li>
             </ul>
             <p><strong>Carga horária:</strong> 8h de imersão prática</p>
         </div>
         """, unsafe_allow_html=True)
 
-    msg_curso = "Olá Rafaella! Tenho interesse em obter mais informações sobre as próximas turmas dos cursos da Academy."
+    msg_curso = "Olá Rafaella! Tenho interesse em saber datas e valores das próximas turmas dos cursos da Academy."
     link_curso_wa = f"https://wa.me/{WHATSAPP_NUMERO}?text={urllib.parse.quote(msg_curso)}"
     st.link_button("💬 Consultar Turmas e Valores dos Cursos", link_curso_wa)
 
 # =========================================================
-# ABA 4: ÁREA DA GESTORA (PAINEL ADMINISTRATIVO)
+# ABA 3: ÁREA DA GESTORA
 # =========================================================
 with aba_gestao:
-    st.subheader("Painel de Controle da Gestora")
+    st.subheader("Painel Administrativo do Estúdio")
+    senha = st.text_input("Senha de acesso da gestora:", type="password")
     
-    senha = st.text_input("Digite a senha de acesso administrativo:", type="password")
-    
-    # Exemplo simples de barreira de acesso para a Rafaella
-    if senha == "admin123" or senha == "rafaella":
-        st.success("Autenticação realizada com sucesso!")
-        
+    if senha in ["admin123", "rafaella"]:
+        st.success("Acesso autorizado!")
         m1, m2, m3 = st.columns(3)
         m1.metric("Status da Agenda", "Disponível")
         m2.metric("Sinal Obrigatório", f"R$ {VALOR_SINAL:.2f}")
-        m3.metric("Tempo de Tolerância", "10 min")
+        m3.metric("Tolerância", "10 min")
         
         st.markdown("#### Configurações Rápidas")
-        st.write("Nesta área a gestora visualiza o fluxo de caixa, relatórios de atendimentos e bloqueia datas específicas da semana.")
         st.checkbox("Bloquear agendamentos para o próximo Domingo", value=True)
         st.checkbox("Habilitar recebimento via link de cartão", value=True)
     elif senha:
-        st.error("Senha incorreta. Acesso restrito à gestora do estúdio.")
+        st.error("Senha incorreta. Acesso restrito.")
