@@ -84,10 +84,21 @@ st.markdown("""
     }
 
     /* 6. Campos de preenchimento brancos e limpos */
-    input, textarea, [data-baseweb="input"], [data-baseweb="select"], [data-baseweb="base-input"] {
+    input, textarea, 
+    [data-baseweb="input"], 
+    [data-baseweb="input"] > div, 
+    [data-baseweb="base-input"],
+    [data-baseweb="select"],
+    [data-baseweb="select"] > div,
+    div[data-testid="stDateInput"] div {
         background-color: #ffffff !important;
         color: #1e1b4b !important;
         -webkit-text-fill-color: #1e1b4b !important;
+        border-color: #d8b4fe !important;
+    }
+
+    /* Borda e canto arredondado específicos para os containers BaseWeb */
+    [data-baseweb="input"], [data-baseweb="select"] {
         border: 1.5px solid #d8b4fe !important;
         border-radius: 10px !important;
     }
@@ -97,7 +108,12 @@ st.markdown("""
         opacity: 0.6 !important;
     }
 
-    /* 7. Blindagem dos Botões (incluindo Form Submit) */
+    /* Ícone de calendário dentro do DateInput */
+    div[data-testid="stDateInput"] svg {
+        fill: #581c87 !important;
+    }
+
+    /* 7. Blindagem dos Botões */
     .stButton > button, div[data-testid="stFormSubmitButton"] > button {
         background: linear-gradient(135deg, #7e22ce 0%, #9333ea 100%) !important;
         color: #ffffff !important;
@@ -115,12 +131,6 @@ st.markdown("""
         color: #ffffff !important;
         -webkit-text-fill-color: #ffffff !important;
         font-weight: 700 !important;
-    }
-
-    .stButton > button:hover, div[data-testid="stFormSubmitButton"] > button:hover {
-        background: linear-gradient(135deg, #6b21a8 0%, #7e22ce 100%) !important;
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
     }
 
     .stLinkButton > a {
@@ -788,7 +798,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
             with col_cf2:
                 meses_atuais_str = dict_conf.get("mes_liberado", "2026-09,2026-10")
-                meses_atuais_lista = [m.strip() for m in meses_atuais_str.split(",") if m.strip()]
+                meses_atuais_lista = [m.strip() for m in meses_liberados_str.split(",") if m.strip()]
 
                 opcoes_meses = {
                     "2026-09": "Setembro / 2026",
