@@ -1,0 +1,40 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Ambientes virtuais
+venv/
+.venv/
+env/
+.env/
+ENV/
+
+# Streamlit secrets e configs locais
+.streamlit/secrets.toml
+
+# Banco de dados SQLite
+*.db
+*.sqlite
+*.sqlite3
+
+# Arquivos de ambiente
+.env
+
+# Configurações de IDE e Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Arquivos temporários e backups
+* - Copia.*
+* - Copia
+*.bak
+
+# Arquivos de sistema operacional
+Thumbs.db
+[Dd]esktop.ini
+.DS_Store
