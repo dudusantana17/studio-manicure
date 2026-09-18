@@ -18,7 +18,7 @@ st.set_page_config(
 st.markdown('<div id="topo-pagina"></div>', unsafe_allow_html=True)
 
 # =======================================================
-# CONEXÃO SUPABASE
+# CONEXÃO SUPABASE & CONSTANTES DA RAFAELLA
 # =======================================================
 @st.cache_resource
 def get_supabase() -> Client:
@@ -28,6 +28,12 @@ def get_supabase() -> Client:
 
 supabase = get_supabase()
 SENHA_MESTRE = st.secrets.get("GESTORA_PASSWORD", "studio2026")
+
+VALOR_SINAL = 20.00
+CHAVE_PIX = "21969861082"
+BENEFICIARIO = "Rafaella Aquino – Stone IP S.A"
+LINK_CARTAO = "https://payment-link-v3.ton.com.br/pl_3dPKpGv5Zrb9l9aH6tjlw1agNjLX0m4D"
+WHATSAPP_NUMERO = "5521969861082"
 
 if "servico_preselecionado" not in st.session_state:
     st.session_state["servico_preselecionado"] = None
@@ -119,6 +125,17 @@ st.markdown("""
         font-weight: 700;
         color: #581c87;
         margin: 10px 0;
+    }
+    .policy-card {
+        background: #ffffff;
+        border: 1px solid #e9d5ff;
+        border-left: 5px solid #9333ea;
+        border-radius: 14px;
+        padding: 16px 20px;
+        margin: 15px 0;
+        font-size: 14px;
+        line-height: 1.6;
+        color: #3b0764;
     }
     .modal-sucesso-box {
         text-align: center;
@@ -236,24 +253,42 @@ def gerar_protocolo(agendamento_id: int, data_str: str) -> str:
     dt_limpa = data_str[:10].replace("-", "")
     return f"BA-{dt_limpa}-{int(agendamento_id):04d}"
 
-# MODAL - AGENDAMENTO DE CLIENTE
-@st.dialog("✨ Solicitação Enviada!")
-def exibir_modal_confirmacao(nome, servico, data_hora):
+# MODAL - AGENDAMENTO DE CLIENTE COM INFORMAÇÕES DE SINAL E WHATSAPP
+@st.dialog("✨ Quase Lá! Confirme com o Sinal")
+def exibir_modal_confirmacao(nome, servico, data_hora, total_val, restante_val, protocolo):
+    msg_zap = (
+        f"Olá Rafaella! Acabei de fazer minha pré-reserva no Studio Belleza & Arte:\n\n"
+        f"👤 *Cliente:* {nome}\n"
+        f"🔖 *Protocolo:* {protocolo}\n"
+        f"💅 *Procedimento:* {servico}\n"
+        f"📅 *Data:* {data_hora}\n"
+        f"💰 *Total:* R$ {total_val:.2f} (Sinal: R$ {VALOR_SINAL:.2f} | Restante: R$ {restante_val:.2f})\n\n"
+        f"Segue o comprovante do sinal de R$ 20,00 para garantir minha vaga!"
+    )
+    link_zap_comprovante = f"https://wa.me/{WHATSAPP_NUMERO}?text={urllib.parse.quote(msg_zap)}"
+
     st.markdown(f"""
         <div class="modal-sucesso-box">
-            <div style="font-size: 42px;">📲</div>
-            <h2>Pedido Recebido com Sucesso!</h2>
+            <div style="font-size: 42px;">💅</div>
+            <h2>Sua Vaga foi Pré-Reservada!</h2>
             <p style="font-size: 15px; color: #4c1d95; line-height: 1.6;">
-                Olá, <b>{nome}</b>! Sua solicitação para <b>{servico}</b> em <b>{data_hora}</b> foi registrada no nosso sistema.
+                Olá, <b>{nome}</b>! Seu pedido para <b>{servico}</b> em <b>{data_hora}</b> está salvo.<br>
+                Protocolo de Atendimento: <b>{protocolo}</b>
             </p>
             <div class="modal-detalhe">
-                <p style="margin: 0; font-size: 14px; color: #6b21a8;">
-                    💬 <b>Próximo Passo:</b> A administração acabou de receber seu pedido e enviará a <b>confirmação oficial junto com o seu protocolo diretamente no seu WhatsApp</b>.
+                <p style="margin: 0 0 6px 0; font-size: 14px; color: #6b21a8;">
+                    💵 <b>Sinal de Garantia:</b> R$ {VALOR_SINAL:.2f} (Restará R$ {restante_val:.2f} a pagar no local)
+                </p>
+                <p style="margin: 0; font-size: 13px; color: #6b21a8;">
+                    🔴 <i>Lembrete: Sua vaga só é confirmada após o envio do comprovante de pagamento do sinal.</i>
                 </p>
             </div>
         </div>
     """, unsafe_allow_html=True)
-    if st.button("Entendido, fechar aviso!", use_container_width=True):
+    
+    st.link_button("📲 Enviar Comprovante do Sinal no WhatsApp", link_zap_comprovante, use_container_width=True)
+    st.write("")
+    if st.button("Concluir e Voltar ao Início", use_container_width=True):
         st.session_state["scroll_para_topo"] = True
         st.rerun()
 
@@ -477,14 +512,52 @@ if aba_selecionada == "✨ Início & Agendamento":
                     horario_selecionado = st.radio("Selecione o Horário:", horarios_disponiveis, horizontal=True)
                     horario_valido = True
 
+        # =======================================================
+        # 3. CONFIRMAÇÃO COM REGRAS DE SINAL & PAGAMENTO
+        # =======================================================
         if horario_valido and horario_selecionado and srv_obj:
             st.write("")
-            st.markdown("#### 3. Confirmar Agendamento")
+            st.markdown("#### 3. Dados Pessoais, Sinal & Pagamento")
+            
+            # Adicional de Decoração
+            add_decoracao = st.checkbox("✨ Adicionar Decoração (+ R$ 10,00)", value=False)
+            
+            preco_base = float(srv_obj["preco"])
+            total_servico = preco_base + (10.00 if add_decoracao else 0.00)
+            restante_estudio = max(0.00, total_servico - VALOR_SINAL)
+            
+            # Resumo em métricas elegantes
+            col_m1, col_m2, col_m3 = st.columns(3)
+            col_m1.metric("Valor Total", f"R$ {total_servico:.2f}")
+            col_m2.metric("Sinal de Garantia", f"R$ {VALOR_SINAL:.2f}")
+            col_m3.metric("Restante no Estúdio", f"R$ {restante_estudio:.2f}")
+            
+            # Políticas da Rafaella
+            st.markdown("""
+                <div class="policy-card">
+                    <strong>🔴 IMPORTANTE — Regras do Sinal & Agendamento:</strong><br>
+                    • A sua vaga só estará garantida após o pagamento do sinal de <b>R$ 20,00</b>;<br>
+                    • O sinal é válido por 30 dias e intransferível;<br>
+                    • Você pode reagendar com o mesmo sinal avisando com pelo menos <b>24h de antecedência</b>;<br>
+                    • O sinal <b>não é devolvido</b> em caso de cancelamento ou falta;<br>
+                    • Tolerância máxima de <b>10 minutos</b> para atrasos.
+                </div>
+            """, unsafe_allow_html=True)
+            
+            # Formas de Pagamento do Sinal
+            st.markdown("##### 💳 Pagar Sinal de Garantia (R$ 20,00)")
+            col_pag1, col_pag2 = st.columns(2)
+            with col_pag1:
+                st.info(f"🔑 **Chave PIX:** `{CHAVE_PIX}`  \n**Favorecido:** {BENEFICIARIO}")
+            with col_pag2:
+                st.write("Prefere pagar via cartão?")
+                st.link_button("💳 Pagar Sinal no Cartão de Crédito (Ton)", LINK_CARTAO, use_container_width=True)
+
             with st.form("form_confirmacao_reserva"):
                 col_c1, col_c2 = st.columns(2)
                 with col_c1:
                     nome_c = st.text_input("Seu Nome Completo:")
-                    tel_c = st.text_input("WhatsApp (DDD + Número):", placeholder="Ex: 71999999999")
+                    tel_c = st.text_input("WhatsApp (DDD + Número):", placeholder="Ex: 21969861082")
                 with col_c2:
                     nasc_c = st.date_input(
                         "Data de Nascimento:",
@@ -492,14 +565,18 @@ if aba_selecionada == "✨ Início & Agendamento":
                         min_value=datetime(1940, 1, 1),
                         format="DD/MM/YYYY"
                     )
-                    observacao = st.text_area("Observações (opcional):", placeholder="Ex: Alongamento inicial...")
+                    observacao = st.text_area("Observações adicionais (opcional):", placeholder="Ex: Unha roída, preferência por formato amendoado...")
 
-                btn_agendar = st.form_submit_button("Confirmar Reserva de Horário ✨", use_container_width=True)
+                aceitou_termos = st.checkbox("Li e concordo integralmente com as regras de agendamento e política do sinal.")
+
+                btn_agendar = st.form_submit_button("Confirmar Agendamento & Liberar Envio ✨", use_container_width=True)
 
             if btn_agendar:
                 tel_limpo = ''.join(filter(str.isdigit, tel_c.strip()))
                 if not nome_c.strip() or len(tel_limpo) < 10:
-                    st.error("Por favor, informe seu nome completo e WhatsApp com DDD.")
+                    st.error("Por favor, informe seu nome completo e WhatsApp válido com DDD.")
+                elif not aceitou_termos:
+                    st.error("Você precisa marcar o aceite das regras de cancelamento e sinal para prosseguir.")
                 else:
                     supabase.table("clientes").upsert({
                         "nome": nome_c.strip(),
@@ -511,17 +588,25 @@ if aba_selecionada == "✨ Início & Agendamento":
                     cliente_id = res_cli.data[0]["id"]
 
                     data_hora_final = f"{data_selecionada.strftime('%Y-%m-%d')} {horario_selecionado}:00"
+                    
+                    obs_completa = observacao.strip()
+                    if add_decoracao:
+                        obs_completa = f"[Com Decoração +R$10] {obs_completa}".strip()
 
-                    supabase.table("agendamentos").insert({
+                    res_novo_ag = supabase.table("agendamentos").insert({
                         "cliente_id": cliente_id,
                         "servico_id": srv_obj["id"],
                         "data_hora": data_hora_final,
                         "status": "Pendente",
-                        "observacoes": observacao.strip()
+                        "observacoes": obs_completa
                     }).execute()
 
+                    novo_id = res_novo_ag.data[0]["id"] if res_novo_ag.data else 1
+                    prot_gerado = gerar_protocolo(novo_id, data_hora_final)
                     data_hora_str = f"{data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado}"
-                    exibir_modal_confirmacao(nome_c.strip(), srv_obj["nome_servico"], data_hora_str)
+                    
+                    nome_srv_final = srv_obj['nome_servico'] + (" + Decoração" if add_decoracao else "")
+                    exibir_modal_confirmacao(nome_c.strip(), nome_srv_final, data_hora_str, total_servico, restante_estudio, prot_gerado)
 
 # =======================================================
 # 2. ACADEMY (CURSOS & INSCRIÇÃO COM FEEDBACK CLARO)
