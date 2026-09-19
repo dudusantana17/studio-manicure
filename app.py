@@ -1,12 +1,11 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import urllib.parse
-import os
+from supabase import create_client, Client
 
 # =======================================================
-# CONFIGURAÇÃO DA PÁGINA
+# CONFIGURAÇÃO DE PÁGINA
 # =======================================================
 st.set_page_config(
     page_title="Studio Belleza & Arte | Manicure & Academy",
@@ -15,154 +14,210 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+st.markdown('<div id="topo-pagina"></div>', unsafe_allow_html=True)
+
 # =======================================================
-# BANCO DE DADOS LOCAL (SQLite)
+# CONEXÃO SUPABASE & DADOS DE COBRANÇA
 # =======================================================
-DB_FILE = "studio_manicure.db"
+supabase_url = None
+supabase_key = None
+SENHA_MESTRE = "studio2026"
+
+# 1. Validação e obtenção segura de SUPABASE_URL
+try:
+    if "SUPABASE_URL" in st.secrets:
+        supabase_url = str(st.secrets["SUPABASE_URL"]).strip()
+    else:
+        st.error("⚠️ **Configuração ausente:** A chave `SUPABASE_URL` não foi encontrada em `st.secrets`.")
+except Exception as e:
+    st.error(f"⚠️ **Erro ao carregar SUPABASE_URL:** {e}")
+
+# 2. Validação e obtenção segura de SUPABASE_KEY
+try:
+    if "SUPABASE_KEY" in st.secrets:
+        supabase_key = str(st.secrets["SUPABASE_KEY"]).strip()
+    else:
+        st.error("⚠️ **Configuração ausente:** A chave `SUPABASE_KEY` não foi encontrada em `st.secrets`.")
+except Exception as e:
+    st.error(f"⚠️ **Erro ao carregar SUPABASE_KEY:** {e}")
+
+# 3. Validação e obtenção segura de GESTORA_PASSWORD
+try:
+    if "GESTORA_PASSWORD" in st.secrets:
+        SENHA_MESTRE = str(st.secrets["GESTORA_PASSWORD"]).strip()
+    else:
+        st.info("ℹ️ **Aviso:** A chave `GESTORA_PASSWORD` não está definida em `st.secrets`. Usando senha padrão.")
+except Exception as e:
+    st.info(f"ℹ️ **Aviso ao acessar GESTORA_PASSWORD:** {e}. Usando senha padrão.")
+
+# Interrupção graciosa se credenciais essenciais do Supabase não estiverem disponíveis
+if not supabase_url or not supabase_key:
+    st.error("🛑 **Aviso do Sistema:** Configure as chaves `SUPABASE_URL` e `SUPABASE_KEY` nas configurações de Secrets do Streamlit Cloud para inicializar o banco de dados.")
+    st.stop()
+
+@st.cache_resource
+def get_supabase(url: str, key: str):
+    try:
+        return create_client(url, key)
+    except Exception as e:
+        return None
 
 try:
-    SENHA_MESTRE = st.secrets.get("GESTORA_PASSWORD", "studio2026")
-except Exception:
-    SENHA_MESTRE = os.environ.get("GESTORA_PASSWORD", "studio2026")
+    supabase = get_supabase(supabase_url, supabase_key)
+    if supabase is None:
+        st.error("⚠️ **Falha de Conexão:** Não foi possível inicializar o cliente do Supabase. Verifique a URL e a KEY informadas.")
+        st.stop()
+except Exception as e:
+    st.error(f"⚠️ **Erro ao conectar com o Supabase:** {e}")
+    st.stop()
 
-def get_connection():
-    return sqlite3.connect(DB_FILE, check_same_thread=False)
+VALOR_SINAL = 20.00
+CHAVE_PIX = "21969861082"
+BENEFICIARIO = "Rafaella Aquino – Stone IP S.A"
+LINK_CARTAO = "https://payment-link-v3.ton.com.br/pl_3dPKpGv5Zrb9l9aH6tjlw1agNjLX0m4D"
+WHATSAPP_NUMERO = "5521969861082"
 
-def init_db():
-    conn = get_connection()
-    c = conn.cursor()
-
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS clientes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT NOT NULL,
-            telefone TEXT NOT NULL UNIQUE,
-            data_nascimento TEXT,
-            data_cadastro TEXT
-        )
-    ''')
-
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS servicos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome_servico TEXT NOT NULL,
-            duracao_minutos INTEGER NOT NULL,
-            preco REAL NOT NULL
-        )
-    ''')
-
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS agendamentos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            cliente_id INTEGER,
-            servico_id INTEGER,
-            data_hora TEXT NOT NULL,
-            status TEXT DEFAULT 'Pendente',
-            observacoes TEXT,
-            FOREIGN KEY (cliente_id) REFERENCES clientes (id),
-            FOREIGN KEY (servico_id) REFERENCES servicos (id)
-        )
-    ''')
-
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS configuracoes (
-            chave TEXT PRIMARY KEY,
-            valor TEXT NOT NULL
-        )
-    ''')
-
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS turmas_curso (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome_curso TEXT NOT NULL,
-            data_inicio TEXT NOT NULL,
-            horario TEXT NOT NULL,
-            vagas_limite INTEGER NOT NULL DEFAULT 6,
-            preco_curso REAL NOT NULL,
-            status TEXT DEFAULT 'Aberta'
-        )
-    ''')
-
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS inscricoes_curso (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            turma_id INTEGER,
-            nome_aluna TEXT NOT NULL,
-            telefone TEXT NOT NULL,
-            experiencia_previa TEXT,
-            tipo_vaga TEXT DEFAULT 'Titular',
-            posicao_reserva INTEGER DEFAULT 0,
-            status_pagamento TEXT DEFAULT 'Pendente',
-            FOREIGN KEY (turma_id) REFERENCES turmas_curso (id)
-        )
-    ''')
-
-    c.execute("INSERT OR IGNORE INTO configuracoes (chave, valor) VALUES ('agenda_status', 'Aberta')")
-    c.execute("INSERT OR IGNORE INTO configuracoes (chave, valor) VALUES ('mes_liberado', '2026-10')")
-
-    c.execute("SELECT COUNT(*) FROM servicos")
-    if c.fetchone()[0] == 0:
-        c.executemany('''
-            INSERT INTO servicos (nome_servico, duracao_minutos, preco)
-            VALUES (?, ?, ?)
-        ''', [
-            ("Pé e Mão Tradicional", 60, 65.0),
-            ("Alongamento em Gel Moldado", 120, 150.0),
-            ("Manutenção de Unha em Gel", 90, 100.0)
-        ])
-
-    c.execute("SELECT COUNT(*) FROM turmas_curso")
-    if c.fetchone()[0] == 0:
-        c.executemany('''
-            INSERT INTO turmas_curso (nome_curso, data_inicio, horario, vagas_limite, preco_curso, status)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', [
-            ("Formação Profissional em Gel & Fibra", "20/10/2026", "09:00 às 17:00", 6, 650.0, "Aberta"),
-            ("Imersão em Decorações & Nail Art", "27/10/2026", "13:00 às 18:00", 4, 450.0, "Aberta")
-        ])
-
-    c.execute("SELECT COUNT(*) FROM clientes")
-    if c.fetchone()[0] == 0:
-        hoje = datetime.now()
-        data_hoje = hoje.strftime("%Y-%m-%d 10:00")
-        data_15dias = (hoje - timedelta(days=15)).strftime("%Y-%m-%d 14:00")
-        data_30dias = (hoje - timedelta(days=30)).strftime("%Y-%m-%d 16:00")
-
-        c.execute("INSERT INTO clientes (nome, telefone, data_nascimento, data_cadastro) VALUES (?, ?, ?, ?)",
-                  ("Camila Oliveira", "71991234567", hoje.strftime("%Y-%m-%d"), hoje.strftime("%Y-%m-%d")))
-        c.execute("INSERT INTO clientes (nome, telefone, data_nascimento, data_cadastro) VALUES (?, ?, ?, ?)",
-                  ("Beatriz Lima", "71992345678", "1998-11-20", hoje.strftime("%Y-%m-%d")))
-
-        c.execute("INSERT INTO agendamentos (cliente_id, servico_id, data_hora, status) VALUES (1, 1, ?, 'Concluído')", (data_hoje,))
-        c.execute("INSERT INTO agendamentos (cliente_id, servico_id, data_hora, status) VALUES (1, 2, ?, 'Concluído')", (data_15dias,))
-        c.execute("INSERT INTO agendamentos (cliente_id, servico_id, data_hora, status) VALUES (2, 3, ?, 'Concluído')", (data_30dias,))
-
-    conn.commit()
-    conn.close()
-
-init_db()
+if "servico_preselecionado" not in st.session_state:
+    st.session_state["servico_preselecionado"] = None
+if "scroll_para_agendamento" not in st.session_state:
+    st.session_state["scroll_para_agendamento"] = False
+if "scroll_para_topo" not in st.session_state:
+    st.session_state["scroll_para_topo"] = False
+if "conf_curso_pendente" not in st.session_state:
+    st.session_state["conf_curso_pendente"] = None
+if "recusa_pendente" not in st.session_state:
+    st.session_state["recusa_pendente"] = None
 
 # =======================================================
-# CSS COMPLETO
+# CSS VISUAL COM BLINDAGEM TOTAL (MODO ESCURO / MOBILE)
 # =======================================================
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
 
-    html, body, [class*="css"] {
-        font-family: 'Plus Jakarta Sans', sans-serif;
-        color: #2e1065;
-    }
-    .stApp {
-        background-color: #faf5ff;
+    /* 1. Forçar modo claro geral */
+    :root, html, body, [data-testid="stAppViewContainer"], .stApp {
+        color-scheme: light !important;
+        supported-color-schemes: light !important;
+        background-color: #faf5ff !important;
+        color: #2e1065 !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
     }
 
+    /* 2. Ocultação de menus padrão */
+    footer {visibility: hidden; display: none !important;}
+    [data-testid="stStatusWidget"] {visibility: hidden; display: none !important;}
+    header {visibility: hidden; display: none !important;}
+
+    /* 3. Forçar contraste escuro legível em textos */
+    h1, h2, h3, h4, h5, h6, p, span, label, div, small {
+        color: #2e1065 !important;
+    }
+
+    /* 4. Rótulos de campos */
+    .stTextInput label, .stDateInput label, .stSelectbox label, 
+    .stRadio label, .stCheckbox label, .stTextArea label, .stTimeInput label {
+        color: #2e1065 !important;
+        font-weight: 700 !important;
+    }
+
+    [data-testid="stMarkdownContainer"] p, [data-testid="stWidgetLabel"] p {
+        color: #2e1065 !important;
+        font-weight: 600 !important;
+    }
+
+    /* 5. Campos de Entrada (Inputs fechados) */
+    input, textarea, 
+    [data-baseweb="input"], 
+    [data-baseweb="input"] > div, 
+    [data-baseweb="base-input"],
+    [data-baseweb="select"],
+    [data-baseweb="select"] > div,
+    div[data-testid="stDateInput"] div {
+        background-color: #ffffff !important;
+        color: #1e1b4b !important;
+        -webkit-text-fill-color: #1e1b4b !important;
+        border-color: #d8b4fe !important;
+    }
+
+    [data-baseweb="input"], [data-baseweb="select"] {
+        border: 1.5px solid #d8b4fe !important;
+        border-radius: 10px !important;
+    }
+
+    /* 6. Blindagem do menu suspenso aberto (Dropdown / Popover) */
+    [data-baseweb="popover"], 
+    [data-baseweb="popover"] > div, 
+    [data-baseweb="menu"], 
+    ul[role="listbox"],
+    div[role="listbox"] {
+        background-color: #ffffff !important;
+        border: 1.5px solid #c084fc !important;
+        border-radius: 12px !important;
+        box-shadow: 0 10px 25px rgba(88, 28, 135, 0.15) !important;
+    }
+
+    li[role="option"], 
+    li[role="option"] > div,
+    div[role="option"],
+    [data-baseweb="menu"] li {
+        background-color: #ffffff !important;
+        color: #2e1065 !important;
+        -webkit-text-fill-color: #2e1065 !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+    }
+
+    li[role="option"]:hover, 
+    li[aria-selected="true"],
+    [data-baseweb="menu"] li:hover {
+        background-color: #f3e8ff !important;
+        color: #6b21a8 !important;
+        -webkit-text-fill-color: #6b21a8 !important;
+    }
+
+    [data-baseweb="select"] svg, div[data-testid="stDateInput"] svg {
+        fill: #581c87 !important;
+    }
+
+    /* 7. Blindagem dos Botões */
+    .stButton > button, div[data-testid="stFormSubmitButton"] > button {
+        background: linear-gradient(135deg, #7e22ce 0%, #9333ea 100%) !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        font-weight: 700 !important;
+        font-size: 16px !important;
+        border-radius: 50px !important;
+        padding: 0.75rem 1.8rem !important;
+        border: 1px solid #c084fc !important;
+        box-shadow: 0 8px 22px rgba(126, 34, 206, 0.3) !important;
+        width: 100% !important;
+    }
+
+    .stButton > button p, div[data-testid="stFormSubmitButton"] > button p {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        font-weight: 700 !important;
+    }
+
+    .stLinkButton > a {
+        background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        font-weight: 700 !important;
+        border-radius: 50px !important;
+        padding: 0.85rem 2rem !important;
+        border: none !important;
+        display: inline-flex !important;
+    }
+
+    /* 8. Componentes estruturais e cartões */
     .site-nav {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background: #ffffff;
-        padding: 18px 36px;
+        background: #ffffff !important;
+        padding: 18px 24px;
         border-radius: 20px;
         box-shadow: 0 10px 25px rgba(88, 28, 135, 0.05);
         border: 1px solid #f3e8ff;
@@ -172,45 +227,33 @@ st.markdown("""
         font-family: 'Playfair Display', serif;
         font-size: 24px;
         font-weight: 700;
-        color: #581c87;
+        color: #581c87 !important;
     }
     .nav-tagline {
         font-size: 11px;
-        color: #9333ea;
+        color: #9333ea !important;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 2px;
     }
-
     .hero-section {
-        background: linear-gradient(135deg, #2e1065 0%, #581c87 50%, #7e22ce 100%);
+        background: linear-gradient(135deg, #2e1065 0%, #581c87 50%, #7e22ce 100%) !important;
         border-radius: 24px;
-        padding: 50px 32px;
-        color: #ffffff;
+        padding: 35px 24px;
         text-align: center;
-        margin-bottom: 32px;
+        margin-bottom: 30px;
         box-shadow: 0 16px 36px -6px rgba(88, 28, 135, 0.35);
         border: 1px solid #c084fc;
     }
-    .hero-section h1 {
-        font-family: 'Playfair Display', serif;
-        font-size: 40px;
-        font-weight: 700;
-        margin: 0;
-        color: #ffffff;
+    .hero-section h1, .hero-section p, .hero-section div {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
     }
-    .hero-section p {
-        font-size: 16px;
-        color: #f5f3ff;
-        max-width: 650px;
-        margin: 12px auto 0 auto;
-    }
-
     .site-card {
-        background: #ffffff;
+        background: #ffffff !important;
         border: 1px solid #f3e8ff;
         border-radius: 18px;
-        padding: 24px;
+        padding: 22px;
         box-shadow: 0 8px 24px rgba(107, 33, 168, 0.05);
         border-top: 5px solid #7e22ce;
         margin-bottom: 20px;
@@ -218,18 +261,31 @@ st.markdown("""
     .site-card h3 {
         font-family: 'Playfair Display', serif;
         font-size: 20px;
-        color: #3b0764;
-        margin: 6px 0;
+        color: #3b0764 !important;
+        margin: 8px 0;
     }
     .card-price-value {
         font-size: 24px;
         font-weight: 700;
-        color: #581c87;
+        color: #581c87 !important;
         margin: 10px 0;
     }
-
+    .policy-card {
+        background: #ffffff !important;
+        border: 1px solid #e9d5ff;
+        border-left: 5px solid #9333ea;
+        border-radius: 14px;
+        padding: 16px 20px;
+        margin: 15px 0;
+        font-size: 14px;
+        line-height: 1.6;
+        color: #3b0764 !important;
+    }
+    .policy-card strong, .policy-card b {
+        color: #4a044e !important;
+    }
     .metric-box {
-        background: #ffffff;
+        background: #ffffff !important;
         border-radius: 16px;
         padding: 20px;
         border-left: 5px solid #7e22ce;
@@ -240,93 +296,37 @@ st.markdown("""
     .metric-label {
         font-size: 13px;
         font-weight: 600;
-        color: #7e22ce;
+        color: #7e22ce !important;
         text-transform: uppercase;
         letter-spacing: 1px;
     }
     .metric-value {
-        font-size: 26px;
+        font-size: 24px;
         font-weight: 700;
-        color: #3b0764;
+        color: #3b0764 !important;
         margin: 6px 0 2px 0;
     }
-    .metric-sub {
-        font-size: 12px;
-        color: #64748b;
+    .modal-sucesso-box {
+        text-align: center;
+        padding: 10px;
     }
-
-    /* CARD DE DESTAQUE PARA O WHATSAPP DA GESTORA */
-    .zap-destaque-box {
-        background: #f0fdf4;
-        border: 2px solid #86efac;
-        border-radius: 16px;
-        padding: 20px 24px;
-        margin-bottom: 25px;
-        box-shadow: 0 6px 20px rgba(34, 197, 94, 0.12);
+    .modal-sucesso-box h2 {
+        font-family: 'Playfair Display', serif;
+        color: #4c1d95 !important;
+        margin-top: 10px;
     }
-
-    .stButton > button {
-        background: linear-gradient(135deg, #7e22ce 0%, #a855f7 100%) !important;
-        color: #ffffff !important;
-        font-weight: 600 !important;
-        font-size: 15px !important;
-        border-radius: 50px !important;
-        padding: 0.75rem 1.8rem !important;
-        border: none !important;
-        box-shadow: 0 8px 20px rgba(126, 34, 206, 0.28) !important;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    .modal-detalhe {
+        background: #faf5ff;
+        border: 1px solid #e9d5ff;
+        border-radius: 12px;
+        padding: 16px;
+        margin: 18px 0;
+        text-align: left;
     }
-    .stButton > button:hover {
-        background: linear-gradient(135deg, #6b21a8 0%, #9333ea 100%) !important;
-        box-shadow: 0 12px 28px rgba(126, 34, 206, 0.42) !important;
-        transform: translateY(-2px) scale(1.01) !important;
-    }
-    .stLinkButton > a {
-        background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important;
-        color: #ffffff !important;
-        font-weight: 700 !important;
-        font-size: 15px !important;
-        border-radius: 50px !important;
-        padding: 0.85rem 2rem !important;
-        border: none !important;
-        box-shadow: 0 8px 22px rgba(34, 197, 94, 0.35) !important;
-        transition: all 0.3s ease !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-    }
-    .stLinkButton > a:hover {
-        background: linear-gradient(135deg, #16a34a 0%, #15803d 100%) !important;
-        box-shadow: 0 12px 28px rgba(34, 197, 94, 0.45) !important;
-        transform: translateY(-2px) !important;
-        color: #ffffff !important;
-    }
-
-    .badge-vagas-abertas {
-        background-color: #ecfdf5;
-        color: #047857;
-        border: 1px solid #a7f3d0;
-        font-size: 12px;
-        font-weight: 700;
-        padding: 4px 12px;
-        border-radius: 20px;
-        display: inline-block;
-    }
-    .badge-reserva-aberta {
-        background-color: #fffbeb;
-        color: #b45309;
-        border: 1px solid #fde68a;
-        font-size: 12px;
-        font-weight: 700;
-        padding: 4px 12px;
-        border-radius: 20px;
-        display: inline-block;
-    }
-
     .site-footer {
         text-align: center;
         padding: 30px 20px;
-        color: #7e22ce;
+        color: #7e22ce !important;
         font-size: 13px;
         border-top: 1px solid #f3e8ff;
         margin-top: 50px;
@@ -334,9 +334,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# =======================================================
+# CONTROLE DE ESTADO DE SCROLL
+if st.session_state.get("scroll_para_topo", False):
+    st.session_state["scroll_para_topo"] = False
+
 # NAVBAR
-# =======================================================
 st.markdown("""
     <div class="site-nav">
         <div>
@@ -344,236 +346,448 @@ st.markdown("""
             <div class="nav-tagline">Nail Design & Academy</div>
         </div>
         <div style="font-size: 14px; color: #581c87; font-weight: 600;">
-            ✨ Atendimento Exclusivo • Cursos com Certificado
+            ✨ Atendimento Exclusivo • Agendamento Imediato
         </div>
     </div>
 """, unsafe_allow_html=True)
 
+DIAS_SEMANA_NOMES = {
+    0: "Segunda-feira",
+    1: "Terça-feira",
+    2: "Quarta-feira",
+    3: "Quinta-feira",
+    4: "Sexta-feira",
+    5: "Sábado",
+    6: "Domingo"
+}
+
+def gerar_protocolo(agendamento_id: int, data_str: str) -> str:
+    dt_limpa = data_str[:10].replace("-", "")
+    return f"BA-{dt_limpa}-{int(agendamento_id):04d}"
+
+# MODAL - AGENDAMENTO DE CLIENTE COM PROTOCOLO E WHATSAPP
+@st.dialog("✨ Quase Lá! Confirme com o Sinal")
+def exibir_modal_confirmacao(nome, servico, data_hora, total_val, restante_val, protocolo):
+    msg_zap = (
+        f"Olá Rafaella! Acabei de fazer minha pré-reserva no Studio Belleza & Arte:\n\n"
+        f"👤 *Cliente:* {nome}\n"
+        f"🔖 *Protocolo:* {protocolo}\n"
+        f"💅 *Procedimento:* {servico}\n"
+        f"📅 *Data:* {data_hora}\n"
+        f"💰 *Total:* R$ {total_val:.2f} (Sinal: R$ {VALOR_SINAL:.2f} | Restante: R$ {restante_val:.2f})\n\n"
+        f"Segue o comprovante do sinal de R$ 20,00 para garantir minha vaga!"
+    )
+    link_zap_comprovante = f"https://wa.me/{WHATSAPP_NUMERO}?text={urllib.parse.quote(msg_zap)}"
+
+    st.markdown(f"""
+        <div class="modal-sucesso-box">
+            <div style="font-size: 42px;">💅</div>
+            <h2>Sua Vaga foi Pré-Reservada!</h2>
+            <p style="font-size: 15px; color: #4c1d95; line-height: 1.6;">
+                Olá, <b>{nome}</b>! Seu pedido para <b>{servico}</b> em <b>{data_hora}</b> está salvo.<br>
+                Protocolo de Atendimento: <b>{protocolo}</b>
+            </p>
+            <div class="modal-detalhe">
+                <p style="margin: 0 0 6px 0; font-size: 14px; color: #6b21a8;">
+                    💵 <b>Sinal de Garantia:</b> R$ {VALOR_SINAL:.2f} (Restará R$ {restante_val:.2f} a pagar no local)
+                </p>
+                <p style="margin: 0; font-size: 13px; color: #6b21a8;">
+                    🔴 <i>Lembrete: Sua vaga só é confirmada após o envio do comprovante de pagamento do sinal.</i>
+                </p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.link_button("📲 Enviar Comprovante do Sinal no WhatsApp", link_zap_comprovante, use_container_width=True)
+    st.write("")
+    if st.button("Concluir e Voltar ao Início", use_container_width=True):
+        st.session_state["scroll_para_topo"] = True
+        st.rerun()
+
+# MODAL - INSCRIÇÃO EM CURSO
+@st.dialog("🎓 Inscrição Registrada!")
+def exibir_modal_curso(nome, curso, tipo_vaga, posicao=0):
+    if tipo_vaga == "Titular":
+        msg_tipo = "Sua vaga titular foi pré-reservada com sucesso!"
+        icone = "🎉"
+    else:
+        msg_tipo = f"Você foi incluída na <b>{posicao}ª posição</b> da Lista de Espera!"
+        icone = "📌"
+
+    st.markdown(f"""
+        <div class="modal-sucesso-box">
+            <div style="font-size: 42px;">{icone}</div>
+            <h2>Inscrição Enviada!</h2>
+            <p style="font-size: 15px; color: #4c1d95; line-height: 1.6;">
+                Olá, <b>{nome}</b>! Recebemos sua inscrição para a formação <b>{curso}</b>.<br>{msg_tipo}
+            </p>
+            <div class="modal-detalhe">
+                <p style="margin: 0; font-size: 14px; color: #6b21a8;">
+                    📲 <b>Próximo Passo:</b> A coordenação do Studio entrará em contato via <b>WhatsApp</b> para formalizar os detalhes da matrícula e instruções de acesso.
+                </p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    if st.button("Entendido, fechar aviso!", key="btn_fechar_modal_curso", use_container_width=True):
+        st.session_state["scroll_para_topo"] = True
+        st.rerun()
+
+opcoes_menu = ["✨ Início & Agendamento", "🎓 Academy (Cursos)", "🔐 Acesso Gestora"]
 aba_selecionada = st.radio(
     "Navegação",
-    ["✨ Início", "💅 Serviços & Valores", "🎓 Cursos & Turmas", "📅 Agendar Horário", "🔐 Acesso Gestora"],
+    opcoes_menu,
     horizontal=True,
     label_visibility="collapsed"
 )
 
 # =======================================================
-# PÁGINA 1: INÍCIO
+# 1. INÍCIO & AGENDAMENTO
 # =======================================================
-if aba_selecionada == "✨ Início":
+if aba_selecionada == "✨ Início & Agendamento":
     st.markdown("""
         <div class="hero-section">
-            <div style="text-transform: uppercase; letter-spacing: 3px; font-size: 11px; margin-bottom: 8px; color: #e9d5ff; font-weight: 700;">Estética de Luxo & Durabilidade</div>
+            <div style="text-transform: uppercase; letter-spacing: 3px; font-size: 11px; margin-bottom: 8px; color: #e9d5ff; font-weight: 700;">Alta Estética & Sofisticação</div>
             <h1>A excelência e a arte em cada detalhe das suas mãos.</h1>
-            <p>Alongamentos impecáveis com acabamento fino, alta resistência e cursos práticos de capacitação para novas profissionais da beleza.</p>
+            <p>Selecione um procedimento abaixo para consultar os horários disponíveis.</p>
         </div>
     """, unsafe_allow_html=True)
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown("""
-            <div class="site-card" style="text-align: center;">
-                <div style="font-size: 30px;">💎</div>
-                <h4 style="color: #4c1d95; margin: 8px 0 4px 0;">Alongamento Natural</h4>
-                <p style="font-size: 14px; color: #6b21a8; margin: 0;">Curvatura simétrica e estrutura resistente sem deixar a lâmina grossa.</p>
-            </div>
-        """, unsafe_allow_html=True)
-    with c2:
-        st.markdown("""
-            <div class="site-card" style="text-align: center;">
-                <div style="font-size: 30px;">🛡️</div>
-                <h4 style="color: #4c1d95; margin: 8px 0 4px 0;">Biossegurança Total</h4>
-                <p style="font-size: 14px; color: #6b21a8; margin: 0;">Materiais 100% esterilizados em autoclave e insumos de uso individual.</p>
-            </div>
-        """, unsafe_allow_html=True)
-    with c3:
-        st.markdown("""
-            <div class="site-card" style="text-align: center;">
-                <div style="font-size: 30px;">🎓</div>
-                <h4 style="color: #4c1d95; margin: 8px 0 4px 0;">Formação Prática</h4>
-                <p style="font-size: 14px; color: #6b21a8; margin: 0;">Turmas com limite reduzido de alunas para aprendizado direto de bancada.</p>
-            </div>
-        """, unsafe_allow_html=True)
+    try:
+        res_srv = supabase.table("servicos").select("*").order("nome_servico").execute()
+        servicos = res_srv.data if res_srv.data else []
+    except Exception:
+        servicos = []
 
-# =======================================================
-# PÁGINA 2: SERVIÇOS
-# =======================================================
-elif aba_selecionada == "💅 Serviços & Valores":
-    st.markdown("### 💅 Procedimentos Disponíveis")
-    st.caption("Consulte os serviços realizados com padrão de excelência.")
+    try:
+        res_conf = supabase.table("configuracoes").select("*").execute()
+        dict_conf = {row["chave"]: row["valor"] for row in (res_conf.data or [])}
+    except Exception:
+        dict_conf = {}
 
-    conn = get_connection()
-    servicos_df = pd.read_sql_query("SELECT * FROM servicos", conn)
-    conn.close()
+    status_agenda = dict_conf.get("agenda_status", "Aberta")
+    meses_liberados_str = dict_conf.get("mes_liberado", "2026-09,2026-10")
+    meses_liberados_lista = [m.strip() for m in meses_liberados_str.split(",") if m.strip()]
+    dias_func_str = dict_conf.get("dias_funcionamento", "1,2,3,4,5")
+    dias_func_lista = [int(d.strip()) for d in dias_func_str.split(",") if d.strip()]
 
-    colunas = st.columns(len(servicos_df))
-    for idx, srv in servicos_df.iterrows():
-        with colunas[idx]:
-            st.markdown(f"""
-                <div class="site-card">
-                    <span style="font-size: 12px; font-weight: 700; color: #7e22ce; background: #faf5ff; padding: 4px 10px; border-radius: 12px;">⏱ {srv['duracao_minutos']} Minutos</span>
-                    <h3>{srv['nome_servico']}</h3>
-                    <p style="font-size: 14px; color: #6b21a8;">Higienização profunda, acabamento refinado e top coat de alto brilho.</p>
-                    <div class="card-price-value">R$ {srv['preco']:.2f}</div>
-                </div>
-            """, unsafe_allow_html=True)
+    st.markdown("### 💅 Nossos Procedimentos & Valores")
 
-# =======================================================
-# PÁGINA 3: CURSOS
-# =======================================================
-elif aba_selecionada == "🎓 Cursos & Turmas":
-    st.markdown("### 🎓 Formação Profissional em Nail Design")
-    st.caption("Aprenda do zero ou aperfeiçoe suas técnicas com acompanhamento individual.")
+    if not servicos:
+        st.info("Nenhum procedimento cadastrado no momento. A gestora pode cadastrar novos serviços no Painel Administrativo.")
+    else:
+        cols = st.columns(min(len(servicos), 3))
+        for idx, srv in enumerate(servicos):
+            col_target = cols[idx % 3]
+            with col_target:
+                st.markdown(f"""
+                    <div class="site-card">
+                        <span style="font-size: 12px; font-weight: 700; color: #7e22ce; background: #faf5ff; padding: 4px 10px; border-radius: 12px;">⏱ {srv['duracao_minutos']} Minutos</span>
+                        <h3>{srv['nome_servico']}</h3>
+                        <p style="font-size: 14px; color: #6b21a8;">Higienização profunda, formato alinhado e finalização duradoura.</p>
+                        <div class="card-price-value">R$ {float(srv['preco']):.2f}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+                if st.button(f"Agendar {srv['nome_servico']} ✨", key=f"btn_srv_{srv['id']}", use_container_width=True):
+                    st.session_state["servico_preselecionado"] = srv["nome_servico"]
+                    st.session_state["scroll_para_agendamento"] = True
+                    st.rerun()
 
-    conn = get_connection()
-    turmas_df = pd.read_sql_query("SELECT * FROM turmas_curso WHERE status = 'Aberta'", conn)
+    st.divider()
 
-    cols = st.columns(len(turmas_df) if len(turmas_df) > 0 else 1)
-    for idx, turma in turmas_df.iterrows():
-        t_id = turma['id']
-        c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM inscricoes_curso WHERE turma_id = ? AND tipo_vaga = 'Titular'", (t_id,))
-        titulares = c.fetchone()[0]
-        vagas_restantes = turma['vagas_limite'] - titulares
+    st.markdown('<div id="area-agendamento"></div>', unsafe_allow_html=True)
+    st.markdown("### 📅 Escolha a Sua Data & Horário")
 
-        c.execute("SELECT COUNT(*) FROM inscricoes_curso WHERE turma_id = ? AND tipo_vaga = 'Reserva'", (t_id,))
-        fila_reserva = c.fetchone()[0]
-
-        with cols[idx]:
-            st.markdown('<div class="site-card">', unsafe_allow_html=True)
-            if vagas_restantes > 0:
-                st.markdown(f'<span class="badge-vagas-abertas">🟢 Vagas Abertas ({vagas_restantes} de {turma["vagas_limite"]})</span>', unsafe_allow_html=True)
-            else:
-                st.markdown(f'<span class="badge-reserva-aberta">🟡 Turma Cheia (Fila de Espera: {fila_reserva})</span>', unsafe_allow_html=True)
-
-            st.markdown(f"""
-                <h3 style="margin-top: 10px;">{turma['nome_curso']}</h3>
-                <div style="font-size: 13px; color: #6b21a8; margin-bottom: 8px;">📅 Início: {turma['data_inicio']} • ⏱ {turma['horario']}</div>
-                <div class="card-price-value">R$ {turma['preco_curso']:.2f}</div>
-            """, unsafe_allow_html=True)
-
-            with st.expander("Inscrever-se Nesta Turma"):
-                with st.form(f"form_curso_{t_id}"):
-                    nome_aluna = st.text_input("Nome Completo:")
-                    tel_aluna = st.text_input("WhatsApp (DDD + Número):", placeholder="Ex: 71999999999")
-                    experiencia = st.selectbox("Seu Nível Atual:", ["Iniciante do Zero", "Já atuo como Manicure", "Nail Designer em Aperfeiçoamento"])
-                    
-                    texto_btn = "Garantir Vaga Titular" if vagas_restantes > 0 else "Entrar na Lista de Espera"
-                    btn_enviar_curso = st.form_submit_button(texto_btn, use_container_width=True)
-
-                if btn_enviar_curso:
-                    tel_limpo = ''.join(filter(str.isdigit, tel_aluna.strip()))
-                    if not nome_aluna.strip() or len(tel_limpo) < 10:
-                        st.error("Informe seu nome e WhatsApp completo com DDD.")
-                    else:
-                        if vagas_restantes > 0:
-                            c.execute('''
-                                INSERT INTO inscricoes_curso (turma_id, nome_aluna, telefone, experiencia_previa, tipo_vaga, posicao_reserva)
-                                VALUES (?, ?, ?, ?, 'Titular', 0)
-                            ''', (t_id, nome_aluna.strip(), tel_limpo, experiencia))
-                            conn.commit()
-                            st.success("🎉 Inscrição confirmada como Titular! A gestora entrará em contato via WhatsApp.")
-                        else:
-                            nova_pos = fila_reserva + 1
-                            c.execute('''
-                                INSERT INTO inscricoes_curso (turma_id, nome_aluna, telefone, experiencia_previa, tipo_vaga, posicao_reserva)
-                                VALUES (?, ?, ?, ?, 'Reserva', ?)
-                            ''', (t_id, nome_aluna.strip(), tel_limpo, experiencia, nova_pos))
-                            conn.commit()
-                            st.warning(f"📌 Turma lotada! Você foi incluída na {nova_pos}ª posição da reserva. Avisaremos caso surjam desistências.")
-                        st.rerun()
-
-            st.markdown('</div>', unsafe_allow_html=True)
-    conn.close()
-
-# =======================================================
-# PÁGINA 4: AGENDAR HORÁRIO (PORTAL DA CLIENTE)
-# =======================================================
-elif aba_selecionada == "📅 Agendar Horário":
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("SELECT valor FROM configuracoes WHERE chave = 'agenda_status'")
-    status_agenda = c.fetchone()[0]
-
-    c.execute("SELECT valor FROM configuracoes WHERE chave = 'mes_liberado'")
-    mes_liberado_chave = c.fetchone()[0]
-    conn.close()
-
-    ano_lib, mes_lib = mes_liberado_chave.split("-")
-    meses_pt = {
-        "01": "Janeiro", "02": "Fevereiro", "03": "Março", "04": "Abril",
-        "05": "Maio", "06": "Junho", "07": "Julho", "08": "Agosto",
-        "09": "Setembro", "10": "Outubro", "11": "Novembro", "12": "Dezembro"
-    }
-    nome_mes_liberado = f"{meses_pt.get(mes_lib, mes_lib)} de {ano_lib}"
-
-    st.markdown("### 📅 Solicitação de Agendamento Online")
+    if st.session_state.get("scroll_para_agendamento", False):
+        st.session_state["scroll_para_agendamento"] = False
 
     if status_agenda == "Fechada":
         st.warning("🔒 Nossa agenda de atendimentos está temporariamente fechada para novos horários online.")
     else:
-        st.info(f"🗓️ **Atenção:** A agenda está atualmente aberta exclusivamente para agendamentos do mês de **{nome_mes_liberado}**.")
+        nomes_meses_pt = {
+            "01": "Janeiro", "02": "Fevereiro", "03": "Março", "04": "Abril",
+            "05": "Maio", "06": "Junho", "07": "Julho", "08": "Agosto",
+            "09": "Setembro", "10": "Outubro", "11": "Novembro", "12": "Dezembro"
+        }
+        meses_legenda = []
+        for m in meses_liberados_lista:
+            parts = m.split("-")
+            if len(parts) == 2:
+                meses_legenda.append(f"{nomes_meses_pt.get(parts[1], parts[1])}/{parts[0]}")
+        legenda_str = ", ".join(meses_legenda) if meses_legenda else "Consulte a administração"
 
-        conn = get_connection()
-        servicos_df = pd.read_sql_query("SELECT * FROM servicos", conn)
-        conn.close()
+        dias_legenda = [DIAS_SEMANA_NOMES[d] for d in sorted(dias_func_lista)]
+        st.info(f"🗓️ **Meses abertos:** {legenda_str} | **Dias:** {', '.join(dias_legenda)}")
 
-        with st.form("form_site_agendamento"):
-            col1, col2 = st.columns(2)
-            with col1:
-                nome_c = st.text_input("Seu Nome Completo:")
-                tel_c = st.text_input("Seu WhatsApp com DDD (apenas números):", placeholder="Ex: 71999999999")
-                nasc_c = st.date_input("Data de Nascimento:", value=datetime(2000, 1, 1), min_value=datetime(1940, 1, 1))
+        col_esq, col_dir = st.columns([1, 1])
 
-            with col2:
-                opcoes_servicos = {f"{row['nome_servico']} — R$ {row['preco']:.2f} ({row['duracao_minutos']} min)": row['id'] for _, row in servicos_df.iterrows()}
-                srv_escolhido = st.selectbox("Procedimento Desejado:", list(opcoes_servicos.keys()))
-                data_atend = st.date_input("Data Desejada:", min_value=datetime.today())
-                hora_atend = st.time_input("Horário Desejado:", value=datetime.strptime("09:00", "%H:%M").time())
-                observacao = st.text_area("Observações (opcional):", placeholder="Ex: Alongamento inicial, formato amendoado...")
-
-            btn_agendar = st.form_submit_button("Solicitar Agendamento ✨", use_container_width=True)
-
-        if btn_agendar:
-            tel_limpo = ''.join(filter(str.isdigit, tel_c.strip()))
-            mes_escolhido_cliente = data_atend.strftime("%Y-%m")
-
-            if not nome_c.strip() or len(tel_limpo) < 10:
-                st.error("Informe seu nome e WhatsApp válido com DDD.")
-            elif mes_escolhido_cliente != mes_liberado_chave:
-                st.error(f"⛔ Data indisponível! A agenda está aberta apenas para o mês de **{nome_mes_liberado}**. Por favor, escolha uma data dentro deste período.")
+        with col_esq:
+            st.markdown("#### 1. Procedimento & Data")
+            if not servicos:
+                st.warning("Nenhum serviço disponível para agendamento.")
+                srv_obj = None
+                duracao_escolhida = 60
+                data_selecionada = datetime.today().date()
             else:
-                conn = get_connection()
-                c = conn.cursor()
-                c.execute('''
-                    INSERT INTO clientes (nome, telefone, data_nascimento, data_cadastro)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(telefone) DO UPDATE SET
-                        nome = excluded.nome,
-                        data_nascimento = excluded.data_nascimento
-                ''', (nome_c.strip(), tel_limpo, str(nasc_c), datetime.now().strftime("%Y-%m-%d")))
+                lista_nomes = [f"{s['nome_servico']} — R$ {float(s['preco']):.2f} ({s['duracao_minutos']} min)" for s in servicos]
+                map_nomes = {f"{s['nome_servico']} — R$ {float(s['preco']):.2f} ({s['duracao_minutos']} min)": s for s in servicos}
+
+                idx_default = 0
+                if st.session_state["servico_preselecionado"]:
+                    for i, s in enumerate(servicos):
+                        if s["nome_servico"] == st.session_state["servico_preselecionado"]:
+                            idx_default = i
+                            break
+
+                srv_escolhido_str = st.selectbox("Procedimento Selecionado:", lista_nomes, index=idx_default)
+                srv_obj = map_nomes[srv_escolhido_str]
+                duracao_escolhida = int(srv_obj["duracao_minutos"])
+
+                data_selecionada = st.date_input(
+                    "Dia do Atendimento:",
+                    min_value=datetime.today(),
+                    format="DD/MM/YYYY"
+                )
+                dia_da_semana = data_selecionada.weekday()
+                mes_escolhido_str = data_selecionada.strftime("%Y-%m")
+
+        with col_dir:
+            st.markdown("#### 2. Horários Livres")
+            horario_valido = False
+            horario_selecionado = None
+
+            if not servicos or srv_obj is None:
+                st.info("Cadastre procedimentos no painel para listar os horários.")
+            elif mes_escolhido_str not in meses_liberados_lista:
+                st.error(f"⛔ Data indisponível. Agenda aberta apenas para: **{legenda_str}**.")
+            elif dia_da_semana not in dias_func_lista:
+                st.warning(f"🏖️ Não atendemos às {DIAS_SEMANA_NOMES.get(dia_da_semana, '')}s. Escolha outro dia.")
+            else:
+                data_inicio_dia = f"{data_selecionada.strftime('%Y-%m-%d')} 00:00:00"
+                data_fim_dia = f"{data_selecionada.strftime('%Y-%m-%d')} 23:59:59"
+
+                try:
+                    res_ocupados = supabase.table("agendamentos").select(
+                        "data_hora, servicos(duracao_minutos)"
+                    ).gte("data_hora", data_inicio_dia).lte("data_hora", data_fim_dia).in_("status", ["Pendente", "Confirmado"]).execute()
+                    ocupados = res_ocupados.data or []
+                except Exception:
+                    ocupados = []
+
+                intervalos_ocupados = []
+                for ag_oc in ocupados:
+                    dt_hora_str = ag_oc["data_hora"][:19].replace("T", " ")
+                    dt_inicio = datetime.strptime(dt_hora_str, "%Y-%m-%d %H:%M:%S")
+                    dur_oc = ag_oc["servicos"]["duracao_minutos"] if ag_oc.get("servicos") else 60
+                    dt_fim = dt_inicio + timedelta(minutes=int(dur_oc))
+                    intervalos_ocupados.append((dt_inicio.time(), dt_fim.time()))
+
+                grade_base = [
+                    time(8, 0), time(9, 0), time(10, 0), time(11, 0),
+                    time(13, 0), time(14, 0), time(15, 0), time(16, 0), time(17, 0)
+                ]
+
+                horarios_disponiveis = []
+                hora_limite_studio = time(19, 0)
+
+                for slot in grade_base:
+                    inicio_slot = datetime.combine(data_selecionada, slot)
+                    fim_slot = inicio_slot + timedelta(minutes=duracao_escolhida)
+
+                    if fim_slot.time() > hora_limite_studio:
+                        continue
+
+                    colisao = False
+                    for oc_ini, oc_fim in intervalos_ocupados:
+                        oc_ini_dt = datetime.combine(data_selecionada, oc_ini)
+                        oc_fim_dt = datetime.combine(data_selecionada, oc_fim)
+                        if (inicio_slot < oc_fim_dt) and (fim_slot > oc_ini_dt):
+                            colisao = True
+                            break
+
+                    if not colisao:
+                        if data_selecionada == datetime.today().date() and slot <= datetime.now().time():
+                            continue
+                        horarios_disponiveis.append(slot.strftime("%H:%M"))
+
+                if not horarios_disponiveis:
+                    st.warning("⚠️ Todos os horários deste dia estão preenchidos para a duração deste procedimento.")
+                else:
+                    horario_selecionado = st.radio("Selecione o Horário:", horarios_disponiveis, horizontal=True)
+                    horario_valido = True
+
+        # =======================================================
+        # 3. CONFIRMAÇÃO COM SINAL & PAGAMENTO (SEM NASCIMENTO)
+        # =======================================================
+        if horario_valido and horario_selecionado and srv_obj:
+            st.write("")
+            st.markdown("#### 3. Dados Pessoais, Sinal & Pagamento")
+            
+            add_decoracao = st.checkbox("✨ Adicionar Decoração (+ R$ 10,00)", value=False)
+            
+            preco_base = float(srv_obj["preco"])
+            total_servico = preco_base + (10.00 if add_decoracao else 0.00)
+            restante_estudio = max(0.00, total_servico - VALOR_SINAL)
+            
+            col_m1, col_m2, col_m3 = st.columns(3)
+            col_m1.metric("Valor Total", f"R$ {total_servico:.2f}")
+            col_m2.metric("Sinal de Garantia", f"R$ {VALOR_SINAL:.2f}")
+            col_m3.metric("Restante no Estúdio", f"R$ {restante_estudio:.2f}")
+            
+            st.markdown("""
+                <div class="policy-card">
+                    <strong>🔴 IMPORTANTE — Regras do Sinal & Agendamento:</strong><br>
+                    • A sua vaga só estará garantida após o pagamento do sinal de <b>R$ 20,00</b>;<br>
+                    • O sinal é válido por 30 dias e intransferível;<br>
+                    • Você pode reagendar com o mesmo sinal avisando com pelo menos <b>24h de antecedência</b>;<br>
+                    • O sinal <b>não é devolvido</b> em caso de cancelamento ou falta;<br>
+                    • Tolerância máxima de <b>10 minutos</b> para atrasos.
+                </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("##### 💳 Pagar Sinal de Garantia (R$ 20,00)")
+            col_pag1, col_pag2 = st.columns(2)
+            with col_pag1:
+                st.info(f"🔑 **Chave PIX:** `{CHAVE_PIX}`  \n**Favorecido:** {BENEFICIARIO}")
+            with col_pag2:
+                st.write("Prefere pagar via cartão?")
+                st.link_button("💳 Pagar Sinal no Cartão de Crédito (Ton)", LINK_CARTAO, use_container_width=True)
+
+            with st.form("form_confirmacao_reserva"):
+                col_c1, col_c2 = st.columns(2)
+                with col_c1:
+                    nome_c = st.text_input("Seu Nome Completo:")
+                with col_c2:
+                    tel_c = st.text_input("WhatsApp (DDD + Número):", placeholder="Ex: 21969861082")
                 
-                c.execute("SELECT id FROM clientes WHERE telefone = ?", (tel_limpo,))
-                c_id = c.fetchone()[0]
+                observacao = st.text_area("Observações adicionais (opcional):", placeholder="Ex: Unha roída, preferência por formato amendoado...")
 
-                s_id = opcoes_servicos[srv_escolhido]
-                data_hora_txt = f"{data_atend.strftime('%Y-%m-%d')} {hora_atend.strftime('%H:%M')}"
+                aceitou_termos = st.checkbox("Li e concordo integralmente com as regras de agendamento e política do sinal.")
 
-                c.execute('''
-                    INSERT INTO agendamentos (cliente_id, servico_id, data_hora, status, observacoes)
-                    VALUES (?, ?, ?, 'Pendente', ?)
-                ''', (c_id, s_id, data_hora_txt, observacao.strip()))
+                btn_agendar = st.form_submit_button("Confirmar Agendamento & Liberar Envio ✨", use_container_width=True)
 
-                conn.commit()
-                conn.close()
+            if btn_agendar:
+                tel_limpo = ''.join(filter(str.isdigit, tel_c.strip()))
+                if not nome_c.strip() or len(tel_limpo) < 10:
+                    st.error("Por favor, informe seu nome completo e WhatsApp válido com DDD.")
+                elif not aceitou_termos:
+                    st.error("Você precisa marcar o aceite das regras de cancelamento e sinal para prosseguir.")
+                else:
+                    supabase.table("clientes").upsert({
+                        "nome": nome_c.strip(),
+                        "telefone": tel_limpo
+                    }, on_conflict="telefone").execute()
 
-                st.success("✨ Sua solicitação de agendamento foi registrada com sucesso!")
-                st.info("Assim que a gestora analisar a disponibilidade, você receberá a confirmação oficial diretamente no seu WhatsApp.")
+                    res_cli = supabase.table("clientes").select("id").eq("telefone", tel_limpo).execute()
+                    cliente_id = res_cli.data[0]["id"]
+
+                    data_hora_final = f"{data_selecionada.strftime('%Y-%m-%d')} {horario_selecionado}:00"
+                    
+                    obs_completa = observacao.strip()
+                    if add_decoracao:
+                        obs_completa = f"[Com Decoração +R$10] {obs_completa}".strip()
+
+                    res_novo_ag = supabase.table("agendamentos").insert({
+                        "cliente_id": cliente_id,
+                        "servico_id": srv_obj["id"],
+                        "data_hora": data_hora_final,
+                        "status": "Pendente",
+                        "observacoes": obs_completa
+                    }).execute()
+
+                    novo_id = res_novo_ag.data[0]["id"] if res_novo_ag.data else 1
+                    prot_gerado = gerar_protocolo(novo_id, data_hora_final)
+                    data_hora_str = f"{data_selecionada.strftime('%d/%m/%Y')} às {horario_selecionado}"
+                    
+                    nome_srv_final = srv_obj['nome_servico'] + (" + Decoração" if add_decoracao else "")
+                    exibir_modal_confirmacao(nome_c.strip(), nome_srv_final, data_hora_str, total_servico, restante_estudio, prot_gerado)
 
 # =======================================================
-# PÁGINA 5: PAINEL DA GESTORA
+# 2. ACADEMY (CURSOS & INSCRIÇÃO COM FEEDBACK CLARO)
+# =======================================================
+elif aba_selecionada == "🎓 Academy (Cursos)":
+    st.markdown("### 🎓 Capacitação & Formação em Nail Design")
+    st.write("Aprenda as técnicas mais valorizadas com aulas práticas e acompanhamento individual.")
+
+    try:
+        res_turmas = supabase.table("turmas_curso").select("*").eq("status", "Aberta").execute()
+        turmas = res_turmas.data if res_turmas.data else []
+    except Exception as e:
+        st.error(f"Erro ao buscar turmas: {e}")
+        turmas = []
+
+    if not turmas:
+        st.info("Nenhuma turma com inscrições abertas no momento.")
+    else:
+        cols_t = st.columns(min(len(turmas), 3))
+        for idx, turma in enumerate(turmas):
+            t_id = turma["id"]
+            
+            res_titulares = supabase.table("inscricoes_curso").select("id").eq("turma_id", t_id).eq("tipo_vaga", "Titular").execute()
+            titulares_count = len(res_titulares.data) if res_titulares.data else 0
+            vagas_restantes = max(0, turma["vagas_limite"] - titulares_count)
+
+            res_reserva = supabase.table("inscricoes_curso").select("id").eq("turma_id", t_id).eq("tipo_vaga", "Reserva").execute()
+            reserva_count = len(res_reserva.data) if res_reserva.data else 0
+
+            with cols_t[idx % 3]:
+                st.markdown('<div class="site-card">', unsafe_allow_html=True)
+                if vagas_restantes > 0:
+                    st.markdown(f'<span style="background-color: #ecfdf5; color: #047857; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">🟢 Vagas Abertas ({vagas_restantes} restantes)</span>', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<span style="background-color: #fffbeb; color: #b45309; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">🟡 Lista de Espera ({reserva_count} na fila)</span>', unsafe_allow_html=True)
+
+                st.markdown(f"""
+                    <h3 style="margin-top: 10px;">{turma['nome_curso']}</h3>
+                    <div style="font-size: 13px; color: #6b21a8; margin-bottom: 8px;">📅 Início: {turma['data_inicio']} • ⏱ {turma['horario']}</div>
+                    <div class="card-price-value">R$ {float(turma['preco_curso']):.2f}</div>
+                """, unsafe_allow_html=True)
+
+                with st.expander("Inscrever-se Nesta Formação"):
+                    with st.form(f"form_curso_{t_id}"):
+                        nome_aluna = st.text_input("Nome Completo:")
+                        tel_aluna = st.text_input("WhatsApp com DDD:", placeholder="Ex: 71999999999")
+                        experiencia = st.selectbox("Seu Nível Atual:", ["Iniciante do Zero", "Manicure Tradicional", "Nail Designer em Aperfeiçoamento"])
+                        texto_btn = "Garantir Vaga Titular ✨" if vagas_restantes > 0 else "Entrar na Fila de Espera 📌"
+                        btn_curso = st.form_submit_button(texto_btn, use_container_width=True)
+
+                    if btn_curso:
+                        tel_limpo = ''.join(filter(str.isdigit, tel_aluna.strip()))
+                        if not nome_aluna.strip() or len(tel_limpo) < 10:
+                            st.error("Informe seu nome completo e WhatsApp com DDD.")
+                        else:
+                            try:
+                                if vagas_restantes > 0:
+                                    supabase.table("inscricoes_curso").insert({
+                                        "turma_id": t_id,
+                                        "nome_aluna": nome_aluna.strip(),
+                                        "telefone": tel_limpo,
+                                        "experiencia_previa": experiencia,
+                                        "tipo_vaga": "Titular",
+                                        "posicao_reserva": 0
+                                    }).execute()
+                                    exibir_modal_curso(nome_aluna.strip(), turma["nome_curso"], "Titular")
+                                else:
+                                    nova_pos = reserva_count + 1
+                                    supabase.table("inscricoes_curso").insert({
+                                        "turma_id": t_id,
+                                        "nome_aluna": nome_aluna.strip(),
+                                        "telefone": tel_limpo,
+                                        "experiencia_previa": experiencia,
+                                        "tipo_vaga": "Reserva",
+                                        "posicao_reserva": nova_pos
+                                    }).execute()
+                                    exibir_modal_curso(nome_aluna.strip(), turma["nome_curso"], "Reserva", nova_pos)
+                            except Exception as err:
+                                st.error(f"Erro ao salvar inscrição: {err}")
+
+                st.markdown('</div>', unsafe_allow_html=True)
+
+# =======================================================
+# 3. PAINEL DA GESTORA
 # =======================================================
 elif aba_selecionada == "🔐 Acesso Gestora":
-    st.markdown("### 🔐 Painel Administrativo da Gestora")
+    st.markdown("### 🔐 Painel Administrativo do Studio")
 
     if "gestora_logada" not in st.session_state:
         st.session_state.gestora_logada = False
@@ -591,115 +805,43 @@ elif aba_selecionada == "🔐 Acesso Gestora":
     else:
         col_t1, col_t2 = st.columns([4, 1])
         with col_t1:
-            st.success("Sessão da gestora conectada com segurança.")
+            st.success("Sessão autenticada na nuvem.")
         with col_t2:
             if st.button("Sair"):
                 st.session_state.gestora_logada = False
                 st.rerun()
 
-        adm1, adm2, adm3, adm4, adm5 = st.tabs([
+        adm1, adm_curso, adm2, adm3, adm4, adm5 = st.tabs([
+            "📋 Gestão da Agenda & Aprovações",
+            "🎓 Gestão de Cursos & Turmas",
+            "💅 Gerenciar Serviços (Criar / Excluir)",
             "📊 Faturamento & Métricas",
-            "📋 Gestão da Agenda",
-            "🗂️ Prontuário & Histórico de Clientes",
-            "🎓 Turmas de Cursos",
-            "💌 CRM & Retenção"
+            "🗂️ Prontuário de Clientes",
+            "💌 CRM & Retorno"
         ])
 
-        conn = get_connection()
-        c = conn.cursor()
-
-        # SUB-ABA 1: FATURAMENTO
+        # SUB-ABA 1: GESTÃO DA AGENDA
         with adm1:
-            st.markdown("#### 📈 Balanço de Atendimentos e Faturamento")
-            st.caption("Estatísticas calculadas a partir dos procedimentos finalizados com status 'Concluído'.")
+            st.markdown("#### ⚙️ Controle de Agenda Geral")
+            try:
+                res_conf = supabase.table("configuracoes").select("*").execute()
+                dict_conf = {row["chave"]: row["valor"] for row in (res_conf.data or [])}
+            except Exception:
+                dict_conf = {}
 
-            query_concluidos = '''
-                SELECT a.id, a.data_hora, s.preco, s.nome_servico, c.nome as cliente
-                FROM agendamentos a
-                JOIN servicos s ON a.servico_id = s.id
-                JOIN clientes c ON a.cliente_id = c.id
-                WHERE a.status = 'Concluído'
-            '''
-            df_concluidos = pd.read_sql_query(query_concluidos, conn)
-
-            hoje_str = datetime.now().strftime("%Y-%m-%d")
-            sete_dias_atras = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
-            mes_atual_prefix = datetime.now().strftime("%Y-%m")
-
-            if df_concluidos.empty:
-                st.info("Nenhum atendimento concluído para gerar estatísticas.")
-            else:
-                df_concluidos['data_apenas'] = df_concluidos['data_hora'].str.slice(0, 10)
-                df_concluidos['mes_ano'] = df_concluidos['data_hora'].str.slice(0, 7)
-
-                df_dia = df_concluidos[df_concluidos['data_apenas'] == hoje_str]
-                qtd_dia = len(df_dia)
-                lucro_dia = df_dia['preco'].sum()
-
-                df_semana = df_concluidos[df_concluidos['data_apenas'] >= sete_dias_atras]
-                qtd_semana = len(df_semana)
-                lucro_semana = df_semana['preco'].sum()
-
-                df_mes = df_concluidos[df_concluidos['mes_ano'] == mes_atual_prefix]
-                qtd_mes = len(df_mes)
-                lucro_mes = df_mes['preco'].sum()
-
-                c_m1, c_m2, c_m3 = st.columns(3)
-                with c_m1:
-                    st.markdown(f"""
-                        <div class="metric-box">
-                            <div class="metric-label">📅 Hoje</div>
-                            <div class="metric-value">R$ {lucro_dia:.2f}</div>
-                            <div class="metric-sub">{qtd_dia} atendimento(s)</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-                with c_m2:
-                    st.markdown(f"""
-                        <div class="metric-box">
-                            <div class="metric-label">🗓️ Últimos 7 Dias</div>
-                            <div class="metric-value">R$ {lucro_semana:.2f}</div>
-                            <div class="metric-sub">{qtd_semana} atendimento(s)</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-                with c_m3:
-                    st.markdown(f"""
-                        <div class="metric-box">
-                            <div class="metric-label">📊 Mês Corrente</div>
-                            <div class="metric-value">R$ {lucro_mes:.2f}</div>
-                            <div class="metric-sub">{qtd_mes} atendimento(s)</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-
-                st.write("")
-                st.markdown("##### 🔍 Detalhamento dos Últimos Serviços Concluídos")
-                st.dataframe(
-                    df_concluidos[['data_hora', 'cliente', 'nome_servico', 'preco']].rename(
-                        columns={'data_hora': 'Data/Hora', 'cliente': 'Cliente', 'nome_servico': 'Procedimento', 'preco': 'Valor (R$)'}
-                    ),
-                    use_container_width=True,
-                    hide_index=True
-                )
-
-        # SUB-ABA 2: GESTÃO DA AGENDA
-        with adm2:
-            st.markdown("#### ⚙️ Controle e Liberação da Agenda")
-
-            c.execute("SELECT valor FROM configuracoes WHERE chave = 'agenda_status'")
-            status_atual = c.fetchone()[0]
-
-            col_cf1, col_cf2 = st.columns(2)
+            col_cf1, col_cf2 = st.columns([1, 2])
             with col_cf1:
-                novo_status = st.toggle("Agenda Geral Aberta para Clientes", value=(status_atual == "Aberta"))
-                valor_toggle = "Aberta" if novo_status else "Fechada"
-                if valor_toggle != status_atual:
-                    c.execute("UPDATE configuracoes SET valor = ? WHERE chave = 'agenda_status'", (valor_toggle,))
-                    conn.commit()
-                    st.toast(f"Status geral: {valor_toggle}!")
+                status_atual = dict_conf.get("agenda_status", "Aberta")
+                novo_status = st.toggle("Agenda Aberta ao Público", value=(status_atual == "Aberta"))
+                v_status = "Aberta" if novo_status else "Fechada"
+                if v_status != status_atual:
+                    supabase.table("configuracoes").upsert({"chave": "agenda_status", "valor": v_status}).execute()
+                    st.toast(f"Status alterado para: {v_status}")
                     st.rerun()
 
             with col_cf2:
-                c.execute("SELECT valor FROM configuracoes WHERE chave = 'mes_liberado'")
-                mes_lib_atual = c.fetchone()[0]
+                meses_atuais_str = dict_conf.get("mes_liberado", "2026-09,2026-10")
+                meses_atuais_lista = [m.strip() for m in meses_atuais_str.split(",") if m.strip()]
 
                 opcoes_meses = {
                     "2026-09": "Setembro / 2026",
@@ -709,256 +851,482 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                     "2027-01": "Janeiro / 2027",
                     "2027-02": "Fevereiro / 2027"
                 }
-                mes_selecionado = st.selectbox(
-                    "Definir Mês Liberado para Agendamentos:",
+
+                selecionados_meses = st.multiselect(
+                    "Meses Liberados para Atendimento:",
                     options=list(opcoes_meses.keys()),
-                    index=list(opcoes_meses.keys()).index(mes_lib_atual) if mes_lib_atual in opcoes_meses else 0,
+                    default=meses_atuais_lista,
                     format_func=lambda x: opcoes_meses.get(x, x)
                 )
 
-                if mes_selecionado != mes_lib_atual:
-                    c.execute("UPDATE configuracoes SET valor = ? WHERE chave = 'mes_liberado'", (mes_selecionado,))
-                    conn.commit()
-                    st.toast(f"Agenda liberada para: {opcoes_meses[mes_selecionado]}!")
+                if sorted(selecionados_meses) != sorted(meses_atuais_lista):
+                    novo_meses_val = ",".join(selecionados_meses)
+                    supabase.table("configuracoes").upsert({"chave": "mes_liberado", "valor": novo_meses_val}).execute()
+                    st.toast("Meses atualizados!")
                     st.rerun()
+
+            st.write("")
+            dias_atuais_str = dict_conf.get("dias_funcionamento", "1,2,3,4,5")
+            dias_atuais_lista = [int(d.strip()) for d in dias_atuais_str.split(",") if d.strip()]
+
+            dias_selecionados = st.multiselect(
+                "Dias de Atendimento na Semana:",
+                options=list(DIAS_SEMANA_NOMES.keys()),
+                default=dias_atuais_lista,
+                format_func=lambda x: DIAS_SEMANA_NOMES.get(x, "")
+            )
+
+            if sorted(dias_selecionados) != sorted(dias_atuais_lista):
+                novo_dias_val = ",".join([str(d) for d in sorted(dias_selecionados)])
+                supabase.table("configuracoes").upsert({"chave": "dias_funcionamento", "valor": novo_dias_val}).execute()
+                st.toast("Dias salvos!")
+                st.rerun()
 
             st.divider()
 
-            # =======================================================
-            # BLOCO DESTACADO: BOTÃO VERDE DO WHATSAPP DA GESTORA
-            # =======================================================
+            # ALERTA DE APROVAÇÃO PENDENTE DE NOTIFICAÇÃO NO WHATSAPP
             if "confirmacao_pendente" in st.session_state and st.session_state["confirmacao_pendente"]:
                 d = st.session_state["confirmacao_pendente"]
-                msg_confirmacao = (
+                msg_conf = (
                     f"Olá {d['nome']}! ✨ Passando para confirmar que o seu agendamento no *Studio Belleza & Arte* foi CONFIRMADO!\n\n"
+                    f"🔖 *Protocolo:* {d['protocolo']}\n"
                     f"💅 *Procedimento:* {d['servico']}\n"
                     f"📅 *Data e Horário:* {d['data_hora']}\n\n"
-                    f"Estamos ansiosas para te receber! Qualquer imprevisto, é só nos avisar por aqui."
+                    f"Estamos ansiosas para te receber! Qualquer imprevisto, é só nos avisar por aqui informando seu protocolo."
                 )
-                link_whatsapp_conf = f"https://api.whatsapp.com/send?phone=55{d['telefone']}&text={urllib.parse.quote(msg_confirmacao)}"
+                link_zap = f"https://api.whatsapp.com/send?phone=55{d['telefone']}&text={urllib.parse.quote(msg_conf)}"
 
                 st.markdown(f"""
-                    <div class="zap-destaque-box">
-                        <h4 style="color: #15803d; margin: 0 0 6px 0;">🎉 Horário de {d['nome']} Aprovado com Sucesso!</h4>
-                        <p style="color: #166534; font-size: 14px; margin-bottom: 12px;">
-                            Clique no botão abaixo para abrir a conversa no WhatsApp e notificar a cliente agora:
-                        </p>
+                    <div style="background: #f0fdf4; border: 2px solid #86efac; border-radius: 16px; padding: 18px; margin-bottom: 20px;">
+                        <h4 style="color: #15803d; margin: 0 0 6px 0;">🎉 Horário de {d['nome']} Aprovado!</h4>
+                        <div style="font-size: 14px; color: #166534; margin-bottom: 10px;">
+                            Protocolo gerado: <b>{d['protocolo']}</b>
+                        </div>
                     </div>
                 """, unsafe_allow_html=True)
-                
-                col_zap1, col_zap2 = st.columns([3, 1])
-                with col_zap1:
-                    st.link_button(f"📲 Enviar Mensagem de Confirmação para {d['nome']} no WhatsApp", link_whatsapp_conf)
-                with col_zap2:
+
+                col_z1, col_z2 = st.columns([3, 1])
+                with col_z1:
+                    st.link_button(f"📲 Notificar {d['nome']} no WhatsApp (com Protocolo)", link_zap)
+                with col_z2:
                     if st.button("Fechar Alerta", key="btn_fechar_zap"):
                         st.session_state["confirmacao_pendente"] = None
                         st.rerun()
 
                 st.divider()
 
-            # LISTA DE SOLICITAÇÕES PENDENTES
-            st.markdown("#### ⏳ Solicitações Pendentes de Aprovação")
-            pendentes = pd.read_sql_query('''
-                SELECT a.id, c.nome, c.telefone, s.nome_servico, a.data_hora, a.observacoes
-                FROM agendamentos a
-                JOIN clientes c ON a.cliente_id = c.id
-                JOIN servicos s ON a.servico_id = s.id
-                WHERE a.status = 'Pendente'
-                ORDER BY a.data_hora ASC
-            ''', conn)
+            # ALERTA DE RECUSA PENDENTE DE NOTIFICAÇÃO NO WHATSAPP
+            if "recusa_pendente" in st.session_state and st.session_state["recusa_pendente"]:
+                r = st.session_state["recusa_pendente"]
+                msg_rec = (
+                    f"Olá {r['nome']}, aqui é do *Studio Belleza & Arte*.\n\n"
+                    f"Infelizmente não foi possível confirmar o seu agendamento para o procedimento *{r['servico']}* "
+                    f"marcado para *{r['data_hora']}* (Protocolo: {r['protocolo']}).\n\n"
+                    f"📌 *Motivo:* {r['motivo']}\n\n"
+                    f"Se desejar reagendar em outro dia ou horário, estamos à disposição no site ou por aqui! ✨"
+                )
+                link_zap_recusa = f"https://api.whatsapp.com/send?phone=55{r['telefone']}&text={urllib.parse.quote(msg_rec)}"
 
-            if pendentes.empty:
-                st.info("Nenhuma solicitação de horário pendente no momento.")
+                st.markdown(f"""
+                    <div style="background: #fef2f2; border: 2px solid #fca5a5; border-radius: 16px; padding: 18px; margin-bottom: 20px;">
+                        <h4 style="color: #b91c1c; margin: 0 0 6px 0;">⚠️ Agendamento de {r['nome']} Recusado</h4>
+                        <div style="font-size: 14px; color: #7f1d1d; margin-bottom: 6px;">
+                            Protocolo: <b>{r['protocolo']}</b>
+                        </div>
+                        <div style="font-size: 14px; color: #7f1d1d; margin-bottom: 10px;">
+                            Motivo registrado: <i>"{r['motivo']}"</i>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+                col_zr1, col_zr2 = st.columns([3, 1])
+                with col_zr1:
+                    st.link_button(f"📲 Avisar {r['nome']} no WhatsApp (com Motivo)", link_zap_recusa)
+                with col_zr2:
+                    if st.button("Fechar Alerta", key="btn_fechar_zap_recusa"):
+                        st.session_state["recusa_pendente"] = None
+                        st.rerun()
+
+                st.divider()
+
+            st.markdown("#### ⏳ Solicitações Pendentes de Agendamento")
+            try:
+                res_pendentes = supabase.table("agendamentos").select(
+                    "id, data_hora, observacoes, servicos(nome_servico), clientes(nome, telefone)"
+                ).eq("status", "Pendente").order("data_hora").execute()
+                pendentes = res_pendentes.data if res_pendentes.data else []
+            except Exception:
+                pendentes = []
+
+            if not pendentes:
+                st.info("Nenhuma solicitação pendente no momento.")
             else:
-                for _, ag in pendentes.iterrows():
-                    ag_id = ag['id']
-                    col_info, col_acao = st.columns([3, 2])
-                    with col_info:
-                        st.markdown(f"💅 **{ag['nome']}** — *{ag['nome_servico']}*")
-                        st.caption(f"📅 Data/Hora Solicitada: **{ag['data_hora']}** | WhatsApp: **{ag['telefone']}**")
-                        if ag['observacoes']:
-                            st.caption(f"Obs: {ag['observacoes']}")
+                for ag in pendentes:
+                    ag_id = ag["id"]
+                    c_nome = ag["clientes"]["nome"] if ag.get("clientes") else "Cliente"
+                    c_tel = ag["clientes"]["telefone"] if ag.get("clientes") else ""
+                    s_nome = ag["servicos"]["nome_servico"] if ag.get("servicos") else "Procedimento"
+                    dh_formatada = ag["data_hora"][:16].replace("T", " ")
+                    prot_ag = gerar_protocolo(ag_id, ag["data_hora"])
 
-                    with col_acao:
-                        btn_col1, btn_col2 = st.columns(2)
-                        with btn_col1:
-                            if st.button("Aprovar Horário", key=f"ap_{ag_id}", use_container_width=True):
-                                c.execute("UPDATE agendamentos SET status = 'Confirmado' WHERE id = ?", (ag_id,))
-                                conn.commit()
-                                # Salva na sessão e aciona o card com o botão verde no topo
+                    st.markdown(f"💅 **{c_nome}** — *{s_nome}*")
+                    st.caption(f"🔖 Protocolo: `{prot_ag}` | 📅 Data/Hora: **{dh_formatada}** | WhatsApp: **{c_tel}**")
+                    if ag.get("observacoes"):
+                        st.caption(f"Obs da cliente: {ag['observacoes']}")
+
+                    col_motivo, col_botoes = st.columns([3, 2])
+                    with col_motivo:
+                        motivo_recusa = st.text_input(
+                            "Motivo da recusa (se for recusar):",
+                            placeholder="Ex: Horário reservado para manutenção, comprovante não enviado...",
+                            key=f"motivo_{ag_id}"
+                        )
+
+                    with col_botoes:
+                        st.write("")
+                        st.write("")
+                        btn_aprovar, btn_recusar = st.columns(2)
+                        with btn_aprovar:
+                            if st.button("Aprovar", key=f"ap_{ag_id}", use_container_width=True):
+                                supabase.table("agendamentos").update({"status": "Confirmado"}).eq("id", ag_id).execute()
                                 st.session_state["confirmacao_pendente"] = {
-                                    "nome": ag['nome'],
-                                    "telefone": ag['telefone'],
-                                    "servico": ag['nome_servico'],
-                                    "data_hora": ag['data_hora']
+                                    "protocolo": prot_ag,
+                                    "nome": c_nome,
+                                    "telefone": c_tel,
+                                    "servico": s_nome,
+                                    "data_hora": dh_formatada
                                 }
                                 st.toast("Horário Aprovado!")
                                 st.rerun()
-
-                        with btn_col2:
+                        with btn_recusar:
                             if st.button("Recusar", key=f"rec_{ag_id}", use_container_width=True):
-                                c.execute("UPDATE agendamentos SET status = 'Cancelado' WHERE id = ?", (ag_id,))
-                                conn.commit()
-                                st.toast("Agendamento recusado!")
+                                motivo_final = motivo_recusa.strip() if motivo_recusa.strip() else "Horário indisponível ou comprovante do sinal não validado."
+                                supabase.table("agendamentos").update({
+                                    "status": "Cancelado",
+                                    "observacoes": f"[RECUSADO: {motivo_final}] " + (ag.get("observacoes") or "")
+                                }).eq("id", ag_id).execute()
+
+                                st.session_state["recusa_pendente"] = {
+                                    "protocolo": prot_ag,
+                                    "nome": c_nome,
+                                    "telefone": c_tel,
+                                    "servico": s_nome,
+                                    "data_hora": dh_formatada,
+                                    "motivo": motivo_final
+                                }
+                                st.toast("Agendamento recusado e horário liberado!")
                                 st.rerun()
+                    st.divider()
 
-                    st.write("")
+            st.markdown("#### ✅ Horários Confirmados (Atendimentos Agendados)")
+            try:
+                res_confirmados = supabase.table("agendamentos").select(
+                    "id, data_hora, servicos(nome_servico), clientes(nome)"
+                ).eq("status", "Confirmado").order("data_hora").execute()
+                confirmados = res_confirmados.data if res_confirmados.data else []
+            except Exception:
+                confirmados = []
 
-            st.divider()
-
-            # CONFIRMADOS (FINALIZAR)
-            st.markdown("#### ✅ Atendimentos Confirmados (Finalizar)")
-            confirmados = pd.read_sql_query('''
-                SELECT a.id, c.nome, c.telefone, s.nome_servico, a.data_hora
-                FROM agendamentos a
-                JOIN clientes c ON a.cliente_id = c.id
-                JOIN servicos s ON a.servico_id = s.id
-                WHERE a.status = 'Confirmado'
-                ORDER BY a.data_hora ASC
-            ''', conn)
-
-            if confirmados.empty:
+            if not confirmados:
                 st.caption("Nenhum atendimento confirmado aguardando realização.")
             else:
-                for _, conf in confirmados.iterrows():
-                    col_c1, col_c2 = st.columns([4, 1])
-                    with col_c1:
-                        st.write(f"💅 **{conf['nome']}** — {conf['nome_servico']} ({conf['data_hora']})")
-                    with col_c2:
-                        if st.button("Finalizar", key=f"conc_{conf['id']}", use_container_width=True):
-                            c.execute("UPDATE agendamentos SET status = 'Concluído' WHERE id = ?", (conf['id'],))
-                            conn.commit()
-                            st.toast("Atendimento concluído e computado no faturamento!")
+                for conf in confirmados:
+                    c1_c, c2_c, c3_c = st.columns([4, 1.2, 1.2])
+                    c_nome = conf["clientes"]["nome"] if conf.get("clientes") else "Cliente"
+                    s_nome = conf["servicos"]["nome_servico"] if conf.get("servicos") else "Procedimento"
+                    dh_txt = conf["data_hora"][:16].replace("T", " ")
+                    prot_conf = gerar_protocolo(conf["id"], conf["data_hora"])
+                    with c1_c:
+                        st.write(f"💅 **{c_nome}** — {s_nome} (`{prot_conf}`) às {dh_txt}")
+                    with c2_c:
+                        if st.button("Concluir", key=f"conc_{conf['id']}", use_container_width=True):
+                            supabase.table("agendamentos").update({"status": "Concluído"}).eq("id", conf["id"]).execute()
+                            st.toast("Marcado como Concluído!")
+                            st.rerun()
+                    with c3_c:
+                        if st.button("Desmarcar", key=f"desm_{conf['id']}", use_container_width=True, help="Cancela e libera o horário imediatamente na grade pública"):
+                            supabase.table("agendamentos").update({"status": "Cancelado"}).eq("id", conf["id"]).execute()
+                            st.toast("Horário desmarcado e liberado na agenda!")
                             st.rerun()
 
-        # SUB-ABA 3: HISTÓRICO E PRONTUÁRIO
-        with adm3:
-            st.markdown("#### 🗂️ Prontuário e Histórico de Atendimentos das Clientes")
-            st.caption("Pesquise por uma cliente para analisar a frequência, procedimentos já feitos e total investido.")
+        # SUB-ABA 2: GESTÃO DE CURSOS & TURMAS
+        with adm_curso:
+            st.markdown("#### 🎓 Gestão de Inscrições nos Cursos")
 
-            clientes_db = pd.read_sql_query("SELECT id, nome, telefone, data_nascimento FROM clientes ORDER BY nome ASC", conn)
+            if st.session_state.get("conf_curso_pendente"):
+                al = st.session_state["conf_curso_pendente"]
+                msg_aluna = (
+                    f"Olá, {al['nome']}! ✨ Aqui é do *Studio Belleza & Arte*.\n\n"
+                    f"Passando para te dar as boas-vindas e confirmar que a sua vaga no curso *{al['curso']}* foi GARANTIDA!\n\n"
+                    f"📅 *Início:* {al['inicio']} | ⏱ *Horário:* {al['horario']}\n"
+                    f"Caso tenha dúvidas sobre o material ou cronograma das aulas, estamos à total disposição."
+                )
+                link_zap_curso = f"https://api.whatsapp.com/send?phone=55{al['telefone']}&text={urllib.parse.quote(msg_aluna)}"
 
-            if clientes_db.empty:
-                st.info("Nenhuma cliente cadastrada.")
+                st.markdown(f"""
+                    <div style="background: #f0fdf4; border: 2px solid #86efac; border-radius: 16px; padding: 18px; margin-bottom: 20px;">
+                        <h4 style="color: #15803d; margin: 0 0 6px 0;">🎉 Vaga de {al['nome']} Confirmada!</h4>
+                        <div style="font-size: 14px; color: #166534; margin-bottom: 10px;">
+                            Curso: <b>{al['curso']}</b> | Tipo: <b>{al['tipo']}</b>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+                col_zc1, col_zc2 = st.columns([3, 1])
+                with col_zc1:
+                    st.link_button(f"📲 Notificar {al['nome']} no WhatsApp", link_zap_curso)
+                with col_zc2:
+                    if st.button("Fechar Alerta", key="btn_fechar_zap_curso"):
+                        st.session_state["conf_curso_pendente"] = None
+                        st.rerun()
+
+                st.divider()
+
+            st.markdown("##### 📝 Alunas Inscritas por Turma")
+            try:
+                res_all_turmas = supabase.table("turmas_curso").select("*").execute()
+                turmas_cadastradas = res_all_turmas.data if res_all_turmas.data else []
+            except Exception as e:
+                st.error(f"Erro ao carregar turmas: {e}")
+                turmas_cadastradas = []
+
+            if not turmas_cadastradas:
+                st.info("Nenhuma turma cadastrada no momento.")
             else:
-                lista_nomes = {f"{row['nome']} ({row['telefone']})": row['id'] for _, row in clientes_db.iterrows()}
-                cliente_selecionada = st.selectbox("Selecione a Cliente para Visualizar o Prontuário:", list(lista_nomes.keys()))
-                id_cliente = lista_nomes[cliente_selecionada]
+                opcoes_turmas_adm = {f"{t['nome_curso']} (Início: {t['data_inicio']})": t for t in turmas_cadastradas}
+                t_escolhida_nome = st.selectbox("Selecione a Turma:", list(opcoes_turmas_adm.keys()))
+                t_obj = opcoes_turmas_adm[t_escolhida_nome]
 
-                query_hist = f'''
-                    SELECT a.data_hora, s.nome_servico, s.preco, a.status, a.observacoes
-                    FROM agendamentos a
-                    JOIN servicos s ON a.servico_id = s.id
-                    WHERE a.cliente_id = {id_cliente}
-                    ORDER BY a.data_hora DESC
-                '''
-                df_hist = pd.read_sql_query(query_hist, conn)
+                try:
+                    res_inscritos = supabase.table("inscricoes_curso").select("*").eq("turma_id", t_obj["id"]).execute()
+                    inscricoes = res_inscritos.data if res_inscritos.data else []
+                except Exception as e:
+                    st.error(f"Erro ao carregar inscrições: {e}")
+                    inscricoes = []
 
-                total_visitas = len(df_hist[df_hist['status'] == 'Concluído'])
-                total_gasto = df_hist[df_hist['status'] == 'Concluído']['preco'].sum()
-                procedimento_favorito = df_hist[df_hist['status'] == 'Concluído']['nome_servico'].mode()
-                favorito_txt = procedimento_favorito[0] if not procedimento_favorito.empty else "Nenhum concluído"
-
-                c_h1, c_h2, c_h3 = st.columns(3)
-                c_h1.metric("Visitas Realizadas", f"{total_visitas} sessão(ões)")
-                c_h2.metric("Total Investido no Studio", f"R$ {total_gasto:.2f}")
-                c_h3.metric("Procedimento Favorito", favorito_txt)
-
-                st.write("")
-                st.markdown("##### 📜 Histórico Cronológico de Sessões")
-                if df_hist.empty:
-                    st.caption("Esta cliente ainda não possui histórico registrado.")
+                if not inscricoes:
+                    st.caption("Nenhuma inscrição registrada nesta turma até o momento.")
                 else:
-                    st.dataframe(
-                        df_hist.rename(columns={
-                            'data_hora': 'Data/Hora',
-                            'nome_servico': 'Procedimento',
-                            'preco': 'Valor (R$)',
-                            'status': 'Status',
-                            'observacoes': 'Anotações Técnicas'
-                        }),
-                        use_container_width=True,
-                        hide_index=True
-                    )
-
-        # SUB-ABA 4: CURSOS & RESERVA
-        with adm4:
-            st.markdown("#### 🎓 Gestão de Turmas e Lista de Reserva")
-            turmas_cadastradas = pd.read_sql_query("SELECT * FROM turmas_curso", conn)
-            for _, t_item in turmas_cadastradas.iterrows():
-                turma_id_adm = t_item['id']
-                st.markdown(f"**{t_item['nome_curso']}** (Limite: {t_item['vagas_limite']} alunas)")
-                
-                inscritas_t = pd.read_sql_query(f"SELECT id, nome_aluna, telefone FROM inscricoes_curso WHERE turma_id = {turma_id_adm} AND tipo_vaga = 'Titular'", conn)
-                reservas_t = pd.read_sql_query(f"SELECT id, nome_aluna, telefone, posicao_reserva FROM inscricoes_curso WHERE turma_id = {turma_id_adm} AND tipo_vaga = 'Reserva' ORDER BY posicao_reserva ASC", conn)
-
-                col_titu, col_res = st.columns(2)
-                with col_titu:
-                    st.caption(f"Titulares ({len(inscritas_t)} de {t_item['vagas_limite']}):")
-                    if not inscritas_t.empty:
-                        st.dataframe(inscritas_t, hide_index=True, use_container_width=True)
-                    else:
-                        st.caption("Nenhuma titular inscrita.")
-
-                with col_res:
-                    st.caption(f"Fila de Reserva ({len(reservas_t)} alunas):")
-                    if not reservas_t.empty:
-                        st.dataframe(reservas_t, hide_index=True, use_container_width=True)
-                        if st.button("Promover 1ª da Reserva para Titular", key=f"prom_{turma_id_adm}"):
-                            primeira_reserva_id = reservas_t.iloc[0]['id']
-                            c.execute("UPDATE inscricoes_curso SET tipo_vaga = 'Titular', posicao_reserva = 0 WHERE id = ?", (int(primeira_reserva_id),))
-                            conn.commit()
-                            st.toast("Aluna promovida para titular!")
-                            st.rerun()
-                    else:
-                        st.caption("Fila vazia.")
-                st.write("")
-
-        # SUB-ABA 5: CRM
-        with adm5:
-            st.markdown("#### ⏳ Lembretes de Retorno (15 e 30 dias)")
-            atendimentos_concluidos = pd.read_sql_query('''
-                SELECT c.nome, c.telefone, s.nome_servico, a.data_hora,
-                       CAST((julianday('now') - julianday(a.data_hora)) AS INTEGER) as dias_decorridos
-                FROM agendamentos a
-                JOIN clientes c ON a.cliente_id = c.id
-                JOIN servicos s ON a.servico_id = s.id
-                WHERE a.status = 'Concluído'
-            ''', conn)
-
-            encontrou_lembrete = False
-            for _, item in atendimentos_concluidos.iterrows():
-                dias = item['dias_decorridos']
-                if dias in [14, 15, 16, 29, 30, 31]:
-                    encontrou_lembrete = True
-                    msg = f"Olá {item['nome']}! Já fazem {dias} dias desde o seu procedimento de {item['nome_servico']} no Studio Belleza & Arte. Vamos agendar sua manutenção para manter suas unhas impecáveis?"
-                    link_zap = f"https://api.whatsapp.com/send?phone=55{item['telefone']}&text={urllib.parse.quote(msg)}"
-
-                    st.info(f"💅 **{item['nome']}** completou **{dias} dias** ({item['nome_servico']})")
-                    st.link_button(f"📲 Chamar no WhatsApp ({item['telefone']})", link_zap)
-
-            if not encontrou_lembrete:
-                st.info("Nenhuma cliente no ciclo exato de 15 ou 30 dias na data de hoje.")
+                    for insc in inscricoes:
+                        col_al_info, col_al_btn = st.columns([4, 2])
+                        tipo_txt = "🟢 Titular" if insc["tipo_vaga"] == "Titular" else f"🟡 Fila de Espera ({insc.get('posicao_reserva', 1)}º)"
+                        with col_al_info:
+                            st.markdown(f"👩‍🎓 **{insc['nome_aluna']}** — {tipo_txt}")
+                            st.caption(f"WhatsApp: **{insc['telefone']}** | Nível: {insc.get('experiencia_previa', 'Não informado')}")
+                        with col_al_btn:
+                            b_zap, b_rem = st.columns(2)
+                            with b_zap:
+                                if st.button("Confirmar", key=f"btn_conf_al_{insc['id']}", use_container_width=True):
+                                    st.session_state["conf_curso_pendente"] = {
+                                        "nome": insc["nome_aluna"],
+                                        "telefone": insc["telefone"],
+                                        "curso": t_obj["nome_curso"],
+                                        "inicio": t_obj["data_inicio"],
+                                        "horario": t_obj["horario"],
+                                        "tipo": insc["tipo_vaga"]
+                                    }
+                                    st.rerun()
+                            with b_rem:
+                                if st.button("Remover", key=f"btn_rem_al_{insc['id']}", use_container_width=True):
+                                    supabase.table("inscricoes_curso").delete().eq("id", insc["id"]).execute()
+                                    st.toast("Inscrição removida!")
+                                    st.rerun()
+                        st.write("")
 
             st.divider()
-            st.markdown("#### 🎂 Aniversariantes do Dia")
-            hoje_md = datetime.now().strftime("%m-%d")
-            aniversariantes = pd.read_sql_query(f"SELECT nome, telefone FROM clientes WHERE strftime('%m-%d', data_nascimento) = '{hoje_md}'", conn)
+            st.markdown("##### ➕ Criar Nova Turma de Formação")
+            with st.form("form_nova_turma"):
+                c_t1, c_t2 = st.columns(2)
+                with c_t1:
+                    novo_curso_nome = st.text_input("Nome da Formação:", placeholder="Ex: Formação Nail Designer Completa")
+                    novo_curso_inicio = st.text_input("Data de Início:", placeholder="Ex: 10 de Outubro / 2026")
+                with c_t2:
+                    novo_curso_horario = st.text_input("Horário das Aulas:", placeholder="Ex: 09:00 às 17:00")
+                    c_v1, c_v2 = st.columns(2)
+                    with c_v1:
+                        novo_curso_vagas = st.number_input("Vagas Titulares:", min_value=1, max_value=50, value=6)
+                    with c_v2:
+                        novo_curso_preco = st.number_input("Valor da Matrícula (R$):", min_value=0.0, step=50.0, value=450.0)
 
-            if aniversariantes.empty:
-                st.info("Nenhuma aniversariante para a data de hoje.")
+                btn_criar_turma = st.form_submit_button("Abrir Nova Turma ✨", use_container_width=True)
+
+            if btn_criar_turma:
+                if novo_curso_nome.strip() and novo_curso_inicio.strip():
+                    supabase.table("turmas_curso").insert({
+                        "nome_curso": novo_curso_nome.strip(),
+                        "data_inicio": novo_curso_inicio.strip(),
+                        "horario": novo_curso_horario.strip(),
+                        "vagas_limite": int(novo_curso_vagas),
+                        "preco_curso": float(novo_curso_preco),
+                        "status": "Aberta"
+                    }).execute()
+                    st.toast("Turma criada e liberada no site!")
+                    st.rerun()
+                else:
+                    st.error("Preencha o nome da formação e a data de início.")
+
+        # SUB-ABA 3: GERENCIAR SERVIÇOS
+        with adm2:
+            st.markdown("#### ➕ Cadastrar Novo Procedimento")
+            with st.form("form_novo_servico_gestora"):
+                c_srv1, c_srv2, c_srv3 = st.columns([3, 2, 2])
+                with c_srv1:
+                    novo_srv_nome = st.text_input("Nome do Procedimento:", placeholder="Ex: Alongamento em Fibra de Vidro")
+                with c_srv2:
+                    novo_srv_duracao = st.number_input("Duração (Minutos):", min_value=15, max_value=240, step=15, value=60)
+                with c_srv3:
+                    novo_srv_preco = st.number_input("Preço (R$):", min_value=0.0, step=5.0, value=75.0)
+
+                btn_salvar_srv = st.form_submit_button("Salvar Novo Serviço ✨", use_container_width=True)
+
+            if btn_salvar_srv:
+                if novo_srv_nome.strip():
+                    supabase.table("servicos").insert({
+                        "nome_servico": novo_srv_nome.strip(),
+                        "duracao_minutos": int(novo_srv_duracao),
+                        "preco": float(novo_srv_preco)
+                    }).execute()
+                    st.toast("Procedimento adicionado com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("Informe o nome do procedimento.")
+
+            st.divider()
+            st.markdown("#### 🗑️ Procedimentos Atuais (Excluir Serviços)")
+            try:
+                res_lista_srv = supabase.table("servicos").select("*").order("nome_servico").execute()
+                lista_srv_cadastrados = res_lista_srv.data if res_lista_srv.data else []
+            except Exception:
+                lista_srv_cadastrados = []
+
+            if not lista_srv_cadastrados:
+                st.info("Nenhum serviço cadastrado no momento.")
             else:
-                for _, niver in aniversariantes.iterrows():
-                    msg_niver = f"Parabéns, {niver['nome']}! 💅 O Studio Belleza & Arte deseja a você um feliz aniversário! Preparamos um mimo especial para o seu próximo atendimento."
-                    link_niver = f"https://api.whatsapp.com/send?phone=55{niver['telefone']}&text={urllib.parse.quote(msg_niver)}"
-                    st.success(f"🎉 **{niver['nome']}** comemora aniversário hoje!")
-                    st.link_button(f"🎂 Enviar Mimo via WhatsApp", link_niver)
+                for s_item in lista_srv_cadastrados:
+                    col_info_s, col_del_s = st.columns([5, 1])
+                    with col_info_s:
+                        st.markdown(f"💅 **{s_item['nome_servico']}** — **R$ {float(s_item['preco']):.2f}** | ⏱ {s_item['duracao_minutos']} min")
+                    with col_del_s:
+                        if st.button("🗑️ Excluir", key=f"del_srv_{s_item['id']}", use_container_width=True):
+                            supabase.table("servicos").delete().eq("id", s_item["id"]).execute()
+                            st.toast(f"{s_item['nome_servico']} removido!")
+                            st.rerun()
+                    st.write("")
 
-        conn.close()
+        # SUB-ABA 4: FATURAMENTO
+        with adm3:
+            st.markdown("#### 📈 Balanço Financeiro")
+            try:
+                res_concluidos = supabase.table("agendamentos").select(
+                    "id, data_hora, servicos(nome_servico, preco), clientes(nome)"
+                ).eq("status", "Concluído").execute()
+                lista_concluidos = res_concluidos.data if res_concluidos.data else []
+            except Exception:
+                lista_concluidos = []
 
-# =======================================================
+            if not lista_concluidos:
+                st.info("Nenhum atendimento concluído registrado.")
+            else:
+                registros = []
+                for item in lista_concluidos:
+                    registros.append({
+                        "Protocolo": gerar_protocolo(item["id"], item["data_hora"]),
+                        "Data/Hora": item["data_hora"][:16].replace("T", " "),
+                        "Cliente": item["clientes"]["nome"] if item.get("clientes") else "Não identificado",
+                        "Procedimento": item["servicos"]["nome_servico"] if item.get("servicos") else "Não identificado",
+                        "Valor": float(item["servicos"]["preco"]) if item.get("servicos") else 0.0,
+                        "data_curta": item["data_hora"][:10],
+                        "mes_ano": item["data_hora"][:7]
+                    })
+                df_concluidos = pd.DataFrame(registros)
+
+                hoje_str = datetime.now().strftime("%Y-%m-%d")
+                sete_dias = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+                mes_atual = datetime.now().strftime("%Y-%m")
+
+                lucro_dia = df_concluidos[df_concluidos["data_curta"] == hoje_str]["Valor"].sum()
+                lucro_semana = df_concluidos[df_concluidos["data_curta"] >= sete_dias]["Valor"].sum()
+                lucro_mes = df_concluidos[df_concluidos["mes_ano"] == mes_atual]["Valor"].sum()
+
+                c_m1, c_m2, c_m3 = st.columns(3)
+                c_m1.markdown(f'<div class="metric-box"><div class="metric-label">📅 Hoje</div><div class="metric-value">R$ {lucro_dia:.2f}</div></div>', unsafe_allow_html=True)
+                c_m2.markdown(f'<div class="metric-box"><div class="metric-label">🗓️ 7 Dias</div><div class="metric-value">R$ {lucro_semana:.2f}</div></div>', unsafe_allow_html=True)
+                c_m3.markdown(f'<div class="metric-box"><div class="metric-label">📊 Mês Atual</div><div class="metric-value">R$ {lucro_mes:.2f}</div></div>', unsafe_allow_html=True)
+
+                st.dataframe(df_concluidos[["Protocolo", "Data/Hora", "Cliente", "Procedimento", "Valor"]], use_container_width=True, hide_index=True)
+
+        # SUB-ABA 5: PRONTUÁRIO
+        with adm4:
+            st.markdown("#### 🗂️ Histórico por Cliente")
+            try:
+                res_clientes = supabase.table("clientes").select("id, nome, telefone").order("nome").execute()
+                clientes_cad = res_clientes.data if res_clientes.data else []
+            except Exception:
+                clientes_cad = []
+
+            if not clientes_cad:
+                st.info("Nenhuma cliente cadastrada.")
+            else:
+                opcoes_c = {f"{c['nome']} ({c['telefone']})": c['id'] for c in clientes_cad}
+                c_escolhida = st.selectbox("Buscar Cliente:", list(opcoes_c.keys()))
+                cli_id = opcoes_c[c_escolhida]
+
+                try:
+                    res_hist = supabase.table("agendamentos").select(
+                        "id, data_hora, status, observacoes, servicos(nome_servico, preco)"
+                    ).eq("cliente_id", cli_id).order("data_hora", desc=True).execute()
+                    hist_data = res_hist.data if res_hist.data else []
+                except Exception:
+                    hist_data = []
+
+                concluidos = [h for h in hist_data if h["status"] == "Concluído"]
+                total_investido = sum(float(h["servicos"]["preco"]) for h in concluidos if h.get("servicos"))
+
+                ch1, ch2 = st.columns(2)
+                ch1.metric("Atendimentos Concluídos", f"{len(concluidos)} sessão(ões)")
+                ch2.metric("Total em Procedimentos", f"R$ {total_investido:.2f}")
+
+                linhas_hist = []
+                for h in hist_data:
+                    linhas_hist.append({
+                        "Protocolo": gerar_protocolo(h["id"], h["data_hora"]),
+                        "Data/Hora": h["data_hora"][:16].replace("T", " "),
+                        "Procedimento": h["servicos"]["nome_servico"] if h.get("servicos") else "N/A",
+                        "Valor (R$)": float(h["servicos"]["preco"]) if h.get("servicos") else 0.0,
+                        "Status": h["status"],
+                        "Obs": h.get("observacoes") or ""
+                    })
+                st.dataframe(pd.DataFrame(linhas_hist), use_container_width=True, hide_index=True)
+
+        # SUB-ABA 6: CRM
+        with adm5:
+            st.markdown("#### 💌 Alertas de Retorno (15 e 30 dias)")
+            try:
+                res_ret = supabase.table("agendamentos").select(
+                    "data_hora, servicos(nome_servico), clientes(nome, telefone)"
+                ).eq("status", "Concluído").execute()
+                ret_data = res_ret.data if res_ret.data else []
+            except Exception:
+                ret_data = []
+
+            lembrete_encontrado = False
+            for item in ret_data:
+                dt_atend = datetime.fromisoformat(item["data_hora"][:10])
+                dias = (datetime.now().date() - dt_atend.date()).days
+                if dias in [14, 15, 16, 29, 30, 31]:
+                    lembrete_encontrado = True
+                    c_nome = item["clientes"]["nome"]
+                    c_tel = item["clientes"]["telefone"]
+                    s_nome = item["servicos"]["nome_servico"]
+                    msg_crm = f"Olá {c_nome}! Faz {dias} dias desde o seu procedimento de {s_nome} no Studio Belleza & Arte. Vamos agendar sua manutenção para manter suas unhas perfeitas?"
+                    link_crm = f"https://api.whatsapp.com/send?phone=55{c_tel}&text={urllib.parse.quote(msg_crm)}"
+                    st.info(f"💅 **{c_nome}** completou **{dias} dias** ({s_nome})")
+                    st.link_button(f"📲 Chamar no WhatsApp ({c_tel})", link_crm)
+
+            if not lembrete_encontrado:
+                st.info("Nenhuma cliente no ciclo de retorno hoje.")
+
 # RODAPÉ
-# =======================================================
 st.markdown("""
     <div class="site-footer">
         <b>Studio Belleza & Arte</b> • Todos os direitos reservados.<br>
