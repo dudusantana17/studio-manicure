@@ -1,0 +1,22 @@
+name: Keep Streamlit Apps Alive
+
+on:
+  schedule:
+    # Executa a cada 4 horas
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping Streamlit Apps
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Apps with curl
+        run: |
+          USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+
+          echo "Pingando Studio Manicure..."
+          curl -sSL -A "$USER_AGENT" --max-time 30 -o /dev/null -w "Studio Manicure -> HTTP %{http_code} (tempo: %{time_total}s)\n" https://studio.santanatecnologia.com.br || echo "Aviso: Falha na requisição para Studio Manicure"
+
+          echo "Pingando Escola Dominical Periperi..."
+          curl -sSL -A "$USER_AGENT" --max-time 30 -o /dev/null -w "Escola Dominical -> HTTP %{http_code} (tempo: %{time_total}s)\n" https://escola-dominical-periperi.streamlit.app || echo "Aviso: Falha na requisição para Escola Dominical"
