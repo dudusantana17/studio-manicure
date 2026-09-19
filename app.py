@@ -406,24 +406,27 @@ def exibir_modal_confirmacao(nome, servico, data_hora, total_val, restante_val, 
 
 # MODAL - INSCRIÇÃO EM CURSO
 @st.dialog("🎓 Inscrição Registrada!")
-def exibir_modal_curso(nome, curso, tipo_vaga, posicao=0):
-    if tipo_vaga == "Titular":
-        msg_tipo = "Sua vaga titular foi pré-reservada com sucesso!"
+def exibir_modal_curso(nome, curso, status_ou_tipo, posicao=0):
+    eh_matriculada = str(status_ou_tipo).lower() in ["titular", "matriculada"]
+    if eh_matriculada:
+        titulo_modal = "Matrícula Pré-Reservada!"
+        msg_tipo = "Sua vaga foi pré-reservada com sucesso como <b>Aluna Matriculada</b>!"
         icone = "🎉"
     else:
-        msg_tipo = f"Você foi incluída na <b>{posicao}ª posição</b> da Lista de Espera!"
-        icone = "📌"
+        titulo_modal = "Inscrição na Lista de Espera!"
+        msg_tipo = f"Você foi incluída com sucesso na <b>{posicao}ª posição</b> da <b>Lista de Espera</b> por ordem de chegada."
+        icone = "⏳"
 
     st.markdown(f"""
         <div class="modal-sucesso-box">
             <div style="font-size: 42px;">{icone}</div>
-            <h2>Inscrição Enviada!</h2>
+            <h2>{titulo_modal}</h2>
             <p style="font-size: 15px; color: #4c1d95; line-height: 1.6;">
                 Olá, <b>{nome}</b>! Recebemos sua inscrição para a formação <b>{curso}</b>.<br>{msg_tipo}
             </p>
             <div class="modal-detalhe">
                 <p style="margin: 0; font-size: 14px; color: #6b21a8;">
-                    📲 <b>Próximo Passo:</b> A coordenação do Studio entrará em contato via <b>WhatsApp</b> para formalizar os detalhes da matrícula e instruções de acesso.
+                    📲 <b>Próximo Passo:</b> A coordenação do Studio entrará em contato via <b>WhatsApp</b> com todas as instruções e detalhes.
                 </p>
             </div>
         </div>
@@ -433,7 +436,7 @@ def exibir_modal_curso(nome, curso, tipo_vaga, posicao=0):
         st.session_state["scroll_para_topo"] = True
         st.rerun()
 
-opcoes_menu = ["✨ Início & Agendamento", "🎓 Academy (Cursos)", "🔐 Acesso Gestora"]
+opcoes_menu = ["✨ Início & Agendamento", "🎓 Cursos & Turmas", "🔐 Acesso Gestora"]
 aba_selecionada = st.radio(
     "Navegação",
     opcoes_menu,
@@ -703,83 +706,158 @@ if aba_selecionada == "✨ Início & Agendamento":
                     exibir_modal_confirmacao(nome_c.strip(), nome_srv_final, data_hora_str, total_servico, restante_estudio, prot_gerado)
 
 # =======================================================
-# 2. ACADEMY (CURSOS & INSCRIÇÃO COM FEEDBACK CLARO)
+# 2. CURSOS & TURMAS (INSCRIÇÕES & LISTA DE ESPERA)
 # =======================================================
-elif aba_selecionada == "🎓 Academy (Cursos)":
-    st.markdown("### 🎓 Capacitação & Formação em Nail Design")
-    st.write("Aprenda as técnicas mais valorizadas com aulas práticas e acompanhamento individual.")
+elif aba_selecionada == "🎓 Cursos & Turmas":
+    st.markdown("### 🎓 Cursos & Turmas de Capacitação")
+    st.write("Aprenda as técnicas mais valorizadas da estética com acompanhamento profissional individualizado.")
 
     try:
         res_turmas = supabase.table("turmas_curso").select("*").eq("status", "Aberta").execute()
         turmas = res_turmas.data if res_turmas.data else []
     except Exception as e:
-        st.error(f"Erro ao buscar turmas: {e}")
+        st.error(f"⚠️ Erro ao consultar turmas no momento: {e}")
         turmas = []
 
     if not turmas:
-        st.info("Nenhuma turma com inscrições abertas no momento.")
+        st.info("Nenhuma turma com inscrições abertas no momento. Novas turmas serão abertas em breve!")
     else:
         cols_t = st.columns(min(len(turmas), 3))
         for idx, turma in enumerate(turmas):
             t_id = turma["id"]
-            
-            res_titulares = supabase.table("inscricoes_curso").select("id").eq("turma_id", t_id).eq("tipo_vaga", "Titular").execute()
-            titulares_count = len(res_titulares.data) if res_titulares.data else 0
-            vagas_restantes = max(0, turma["vagas_limite"] - titulares_count)
+            vagas_totais = int(turma.get("vagas_limite", 6))
 
-            res_reserva = supabase.table("inscricoes_curso").select("id").eq("turma_id", t_id).eq("tipo_vaga", "Reserva").execute()
-            reserva_count = len(res_reserva.data) if res_reserva.data else 0
+            # Consulta inscrições da turma com tratamento seguro
+            try:
+                res_insc = supabase.table("inscricoes_curso").select("*").eq("turma_id", t_id).execute()
+                inscricoes_existentes = res_insc.data if res_insc.data else []
+            except Exception as e_insc:
+                inscricoes_existentes = []
+
+            # Separação clara entre alunas matriculadas e lista de espera
+            matriculadas = [
+                i for i in inscricoes_existentes
+                if str(i.get("status", "")).lower() in ["matriculada", "titular"]
+                or str(i.get("tipo_vaga", "")).lower() in ["titular", "matriculada"]
+            ]
+            espera = [
+                i for i in inscricoes_existentes
+                if str(i.get("status", "")).lower() in ["espera", "reserva"]
+                or str(i.get("tipo_vaga", "")).lower() in ["reserva", "espera"]
+            ]
+
+            vagas_restantes = max(0, vagas_totais - len(matriculadas))
+            turma_lotada = (vagas_restantes == 0)
 
             with cols_t[idx % 3]:
                 st.markdown('<div class="site-card">', unsafe_allow_html=True)
-                if vagas_restantes > 0:
-                    st.markdown(f'<span style="background-color: #ecfdf5; color: #047857; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">🟢 Vagas Abertas ({vagas_restantes} restantes)</span>', unsafe_allow_html=True)
+                
+                # Indicadores de vagas em destaque
+                if not turma_lotada:
+                    st.markdown(f'<span style="background-color: #ecfdf5; color: #047857; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">🟢 Vagas Abertas: {vagas_restantes} de {vagas_totais} restantes</span>', unsafe_allow_html=True)
                 else:
-                    st.markdown(f'<span style="background-color: #fffbeb; color: #b45309; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">🟡 Lista de Espera ({reserva_count} na fila)</span>', unsafe_allow_html=True)
+                    st.markdown(f'<span style="background-color: #fffbeb; color: #b45309; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">🟡 Turma Esgotada • {len(espera)} na Lista de Espera</span>', unsafe_allow_html=True)
 
                 st.markdown(f"""
                     <h3 style="margin-top: 10px;">{turma['nome_curso']}</h3>
-                    <div style="font-size: 13px; color: #6b21a8; margin-bottom: 8px;">📅 Início: {turma['data_inicio']} • ⏱ {turma['horario']}</div>
-                    <div class="card-price-value">R$ {float(turma['preco_curso']):.2f}</div>
+                    <div style="font-size: 13px; color: #6b21a8; margin-bottom: 6px;">📅 Início: <b>{turma.get('data_inicio', 'A definir')}</b> • ⏱ Horário: <b>{turma.get('horario', 'A definir')}</b></div>
+                    <div style="font-size: 12px; color: #7e22ce; margin-bottom: 8px;">👥 Capacidade Total: <b>{vagas_totais} vagas</b> | Restantes: <b>{vagas_restantes}</b></div>
+                    <div class="card-price-value">R$ {float(turma.get('preco_curso', 0.0)):.2f}</div>
                 """, unsafe_allow_html=True)
 
-                with st.expander("Inscrever-se Nesta Formação"):
+                expander_label = "Garantir Minha Vaga ✨" if not turma_lotada else "Entrar na Lista de Espera ⏳"
+                with st.expander(expander_label, expanded=not turma_lotada):
+                    if turma_lotada:
+                        st.info("ℹ️ As vagas titulares desta turma foram preenchidas. Inscreva-se abaixo para garantir seu lugar prioritário na **Lista de Espera**!")
+
                     with st.form(f"form_curso_{t_id}"):
-                        nome_aluna = st.text_input("Nome Completo:")
-                        tel_aluna = st.text_input("WhatsApp com DDD:", placeholder="Ex: 71999999999")
-                        experiencia = st.selectbox("Seu Nível Atual:", ["Iniciante do Zero", "Manicure Tradicional", "Nail Designer em Aperfeiçoamento"])
-                        texto_btn = "Garantir Vaga Titular ✨" if vagas_restantes > 0 else "Entrar na Fila de Espera 📌"
+                        nome_aluna = st.text_input("Seu Nome Completo:", key=f"nome_al_{t_id}")
+                        tel_aluna = st.text_input("WhatsApp (com DDD):", placeholder="Ex: (71) 99999-9999", key=f"tel_al_{t_id}")
+                        experiencia = st.selectbox(
+                            "Nível de Conhecimento:",
+                            ["Iniciante do Zero", "Manicure Tradicional", "Nail Designer em Aperfeiçoamento"],
+                            key=f"exp_al_{t_id}"
+                        )
+                        texto_btn = "Garantir Vaga (Matrícula) ✨" if not turma_lotada else "Cadastrar na Lista de Espera 📌"
                         btn_curso = st.form_submit_button(texto_btn, use_container_width=True)
 
                     if btn_curso:
                         tel_limpo = ''.join(filter(str.isdigit, tel_aluna.strip()))
                         if not nome_aluna.strip() or len(tel_limpo) < 10:
-                            st.error("Informe seu nome completo e WhatsApp com DDD.")
+                            st.error("Por favor, preencha o seu nome completo e um número de WhatsApp válido com DDD.")
                         else:
                             try:
-                                if vagas_restantes > 0:
-                                    supabase.table("inscricoes_curso").insert({
+                                if not turma_lotada:
+                                    # Grava com status 'matriculada'
+                                    dados_ins = {
                                         "turma_id": t_id,
                                         "nome_aluna": nome_aluna.strip(),
                                         "telefone": tel_limpo,
                                         "experiencia_previa": experiencia,
+                                        "status": "matriculada",
                                         "tipo_vaga": "Titular",
                                         "posicao_reserva": 0
-                                    }).execute()
-                                    exibir_modal_curso(nome_aluna.strip(), turma["nome_curso"], "Titular")
+                                    }
+                                    try:
+                                        supabase.table("inscricoes_curso").insert(dados_ins).execute()
+                                    except Exception as e_ins:
+                                        err_str = str(e_ins).lower()
+                                        if "tipo_vaga" in err_str or "posicao_reserva" in err_str:
+                                            supabase.table("inscricoes_curso").insert({
+                                                "turma_id": t_id,
+                                                "nome_aluna": nome_aluna.strip(),
+                                                "telefone": tel_limpo,
+                                                "status": "matriculada"
+                                            }).execute()
+                                        elif "status" in err_str:
+                                            supabase.table("inscricoes_curso").insert({
+                                                "turma_id": t_id,
+                                                "nome_aluna": nome_aluna.strip(),
+                                                "telefone": tel_limpo,
+                                                "tipo_vaga": "Titular",
+                                                "posicao_reserva": 0
+                                            }).execute()
+                                        else:
+                                            raise e_ins
+
+                                    exibir_modal_curso(nome_aluna.strip(), turma["nome_curso"], "matriculada")
                                 else:
-                                    nova_pos = reserva_count + 1
-                                    supabase.table("inscricoes_curso").insert({
+                                    # Grava com status 'espera' e exibe alerta amigavel
+                                    nova_posicao = len(espera) + 1
+                                    dados_ins = {
                                         "turma_id": t_id,
                                         "nome_aluna": nome_aluna.strip(),
                                         "telefone": tel_limpo,
                                         "experiencia_previa": experiencia,
+                                        "status": "espera",
                                         "tipo_vaga": "Reserva",
-                                        "posicao_reserva": nova_pos
-                                    }).execute()
-                                    exibir_modal_curso(nome_aluna.strip(), turma["nome_curso"], "Reserva", nova_pos)
+                                        "posicao_reserva": nova_posicao
+                                    }
+                                    try:
+                                        supabase.table("inscricoes_curso").insert(dados_ins).execute()
+                                    except Exception as e_ins:
+                                        err_str = str(e_ins).lower()
+                                        if "tipo_vaga" in err_str or "posicao_reserva" in err_str:
+                                            supabase.table("inscricoes_curso").insert({
+                                                "turma_id": t_id,
+                                                "nome_aluna": nome_aluna.strip(),
+                                                "telefone": tel_limpo,
+                                                "status": "espera"
+                                            }).execute()
+                                        elif "status" in err_str:
+                                            supabase.table("inscricoes_curso").insert({
+                                                "turma_id": t_id,
+                                                "nome_aluna": nome_aluna.strip(),
+                                                "telefone": tel_limpo,
+                                                "tipo_vaga": "Reserva",
+                                                "posicao_reserva": nova_posicao
+                                            }).execute()
+                                        else:
+                                            raise e_ins
+
+                                    exibir_modal_curso(nome_aluna.strip(), turma["nome_curso"], "espera", nova_posicao)
                             except Exception as err:
-                                st.error(f"Erro ao salvar inscrição: {err}")
+                                st.error(f"⚠️ Erro ao registrar inscrição no Supabase: {err}")
 
                 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -813,7 +891,7 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
         adm1, adm_curso, adm2, adm3, adm4, adm5 = st.tabs([
             "📋 Gestão da Agenda & Aprovações",
-            "🎓 Gestão de Cursos & Turmas",
+            "🎓 Gestão de Cursos",
             "💅 Gerenciar Serviços (Criar / Excluir)",
             "📊 Faturamento & Métricas",
             "🗂️ Prontuário de Clientes",
@@ -1049,91 +1127,163 @@ elif aba_selecionada == "🔐 Acesso Gestora":
                             st.toast("Horário desmarcado e liberado na agenda!")
                             st.rerun()
 
-        # SUB-ABA 2: GESTÃO DE CURSOS & TURMAS
+        # SUB-ABA 2: GESTÃO DE CURSOS
         with adm_curso:
-            st.markdown("#### 🎓 Gestão de Inscrições nos Cursos")
+            st.markdown("#### 🎓 Gestão de Cursos")
 
-            if st.session_state.get("conf_curso_pendente"):
-                al = st.session_state["conf_curso_pendente"]
-                msg_aluna = (
-                    f"Olá, {al['nome']}! ✨ Aqui é do *Studio Belleza & Arte*.\n\n"
-                    f"Passando para te dar as boas-vindas e confirmar que a sua vaga no curso *{al['curso']}* foi GARANTIDA!\n\n"
-                    f"📅 *Início:* {al['inicio']} | ⏱ *Horário:* {al['horario']}\n"
-                    f"Caso tenha dúvidas sobre o material ou cronograma das aulas, estamos à total disposição."
-                )
-                link_zap_curso = f"https://api.whatsapp.com/send?phone=55{al['telefone']}&text={urllib.parse.quote(msg_aluna)}"
-
-                st.markdown(f"""
-                    <div style="background: #f0fdf4; border: 2px solid #86efac; border-radius: 16px; padding: 18px; margin-bottom: 20px;">
-                        <h4 style="color: #15803d; margin: 0 0 6px 0;">🎉 Vaga de {al['nome']} Confirmada!</h4>
-                        <div style="font-size: 14px; color: #166534; margin-bottom: 10px;">
-                            Curso: <b>{al['curso']}</b> | Tipo: <b>{al['tipo']}</b>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-
-                col_zc1, col_zc2 = st.columns([3, 1])
-                with col_zc1:
-                    st.link_button(f"📲 Notificar {al['nome']} no WhatsApp", link_zap_curso)
-                with col_zc2:
-                    if st.button("Fechar Alerta", key="btn_fechar_zap_curso"):
-                        st.session_state["conf_curso_pendente"] = None
-                        st.rerun()
-
-                st.divider()
-
-            st.markdown("##### 📝 Alunas Inscritas por Turma")
+            # 1. Consulta de turmas cadastradas com try/except
             try:
-                res_all_turmas = supabase.table("turmas_curso").select("*").execute()
+                res_all_turmas = supabase.table("turmas_curso").select("*").order("id", desc=True).execute()
                 turmas_cadastradas = res_all_turmas.data if res_all_turmas.data else []
             except Exception as e:
-                st.error(f"Erro ao carregar turmas: {e}")
+                st.error(f"⚠️ Erro ao consultar turmas no Supabase: {e}")
                 turmas_cadastradas = []
 
             if not turmas_cadastradas:
-                st.info("Nenhuma turma cadastrada no momento.")
+                st.info("Nenhuma turma cadastrada no momento. Você pode abrir a primeira turma no formulário abaixo.")
             else:
-                opcoes_turmas_adm = {f"{t['nome_curso']} (Início: {t['data_inicio']})": t for t in turmas_cadastradas}
-                t_escolhida_nome = st.selectbox("Selecione a Turma:", list(opcoes_turmas_adm.keys()))
+                opcoes_turmas_adm = {
+                    f"{t['nome_curso']} (Início: {t.get('data_inicio', 'A definir')})": t
+                    for t in turmas_cadastradas
+                }
+                t_escolhida_nome = st.selectbox("Selecione a Turma para Gerenciar:", list(opcoes_turmas_adm.keys()))
                 t_obj = opcoes_turmas_adm[t_escolhida_nome]
 
+                # 2. Consulta de inscrições da turma selecionada com try/except
                 try:
-                    res_inscritos = supabase.table("inscricoes_curso").select("*").eq("turma_id", t_obj["id"]).execute()
-                    inscricoes = res_inscritos.data if res_inscritos.data else []
+                    res_inscritos = supabase.table("inscricoes_curso").select("*").eq("turma_id", t_obj["id"]).order("id").execute()
+                    todas_inscricoes = res_inscritos.data if res_inscritos.data else []
                 except Exception as e:
-                    st.error(f"Erro ao carregar inscrições: {e}")
-                    inscricoes = []
+                    st.error(f"⚠️ Erro ao carregar inscrições da turma: {e}")
+                    todas_inscricoes = []
 
-                if not inscricoes:
-                    st.caption("Nenhuma inscrição registrada nesta turma até o momento.")
+                # Separação estrita entre Alunas Matriculadas e Lista de Espera
+                matriculadas = [
+                    i for i in todas_inscricoes
+                    if str(i.get("status", "")).lower() in ["matriculada", "titular"]
+                    or str(i.get("tipo_vaga", "")).lower() in ["titular", "matriculada"]
+                ]
+                lista_espera = [
+                    i for i in todas_inscricoes
+                    if str(i.get("status", "")).lower() in ["espera", "reserva"]
+                    or str(i.get("tipo_vaga", "")).lower() in ["reserva", "espera"]
+                ]
+
+                vagas_totais = int(t_obj.get("vagas_limite", 6))
+                vagas_livres = max(0, vagas_totais - len(matriculadas))
+
+                # Painel de métricas da turma
+                col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                col_m1.metric("Vagas Totais", vagas_totais)
+                col_m2.metric("Alunas Matriculadas", len(matriculadas))
+                col_m3.metric("Vagas Restantes", vagas_livres)
+                col_m4.metric("Lista de Espera", len(lista_espera))
+
+                st.divider()
+
+                # ====================================================
+                # TABELA 1: ALUNAS MATRICULADAS
+                # ====================================================
+                st.markdown("##### 👩‍🎓 Alunas Matriculadas")
+                if not matriculadas:
+                    st.info("Nenhuma aluna matriculada nesta turma até o momento.")
                 else:
-                    for insc in inscricoes:
-                        col_al_info, col_al_btn = st.columns([4, 2])
-                        tipo_txt = "🟢 Titular" if insc["tipo_vaga"] == "Titular" else f"🟡 Fila de Espera ({insc.get('posicao_reserva', 1)}º)"
-                        with col_al_info:
-                            st.markdown(f"👩‍🎓 **{insc['nome_aluna']}** — {tipo_txt}")
-                            st.caption(f"WhatsApp: **{insc['telefone']}** | Nível: {insc.get('experiencia_previa', 'Não informado')}")
-                        with col_al_btn:
-                            b_zap, b_rem = st.columns(2)
-                            with b_zap:
-                                if st.button("Confirmar", key=f"btn_conf_al_{insc['id']}", use_container_width=True):
-                                    st.session_state["conf_curso_pendente"] = {
-                                        "nome": insc["nome_aluna"],
-                                        "telefone": insc["telefone"],
-                                        "curso": t_obj["nome_curso"],
-                                        "inicio": t_obj["data_inicio"],
-                                        "horario": t_obj["horario"],
-                                        "tipo": insc["tipo_vaga"]
-                                    }
+                    dados_mat = []
+                    for idx, m_item in enumerate(matriculadas, 1):
+                        dados_mat.append({
+                            "Nº": idx,
+                            "Nome da Aluna": m_item.get("nome_aluna", "Não informado"),
+                            "WhatsApp": m_item.get("telefone", "Não informado"),
+                            "Nível / Experiência": m_item.get("experiencia_previa", "N/D"),
+                            "Status": "Matriculada"
+                        })
+                    st.dataframe(pd.DataFrame(dados_mat), use_container_width=True, hide_index=True)
+
+                    with st.expander("Contatar / Gerenciar Alunas Matriculadas"):
+                        for idx, m_item in enumerate(matriculadas, 1):
+                            col_info_m, col_zap_m, col_del_m = st.columns([3, 2, 1])
+                            with col_info_m:
+                                st.markdown(f"**#{idx} {m_item.get('nome_aluna')}** — 📱 `{m_item.get('telefone')}`")
+                            with col_zap_m:
+                                msg_m = (
+                                    f"Olá, {m_item.get('nome_aluna')}! ✨ Aqui é da coordenação do *Studio Belleza & Arte*.\n\n"
+                                    f"Confirmamos a sua vaga na turma do curso *{t_obj['nome_curso']}*!\n"
+                                    f"📅 Data de Início: {t_obj.get('data_inicio', '')} | ⏱ Horário: {t_obj.get('horario', '')}.\n\n"
+                                    f"Qualquer dúvida sobre materiais necessários ou cronograma, estamos à total disposição!"
+                                )
+                                link_zap_m = f"https://api.whatsapp.com/send?phone=55{m_item.get('telefone')}&text={urllib.parse.quote(msg_m)}"
+                                st.link_button("📲 WhatsApp Boas-vindas", link_zap_m, use_container_width=True)
+                            with col_del_m:
+                                if st.button("🗑️ Remover", key=f"del_mat_{m_item['id']}", use_container_width=True):
+                                    try:
+                                        supabase.table("inscricoes_curso").delete().eq("id", m_item["id"]).execute()
+                                        st.toast(f"Matrícula de {m_item.get('nome_aluna')} removida!")
+                                        st.rerun()
+                                    except Exception as e_del:
+                                        st.error(f"Erro ao remover matrícula: {e_del}")
+
+                st.divider()
+
+                # ====================================================
+                # TABELA 2: LISTA DE ESPERA (ORDEM DE CHEGADA)
+                # ====================================================
+                st.markdown("##### ⏳ Lista de Espera (Ordem de Chegada)")
+                if not lista_espera:
+                    st.success("🎉 Não há alunas na lista de espera para esta turma.")
+                else:
+                    dados_esp = []
+                    for idx, e_item in enumerate(lista_espera, 1):
+                        dados_esp.append({
+                            "Posição na Fila": f"{idx}º Lugar",
+                            "Nome da Aluna": e_item.get("nome_aluna", "Não informado"),
+                            "WhatsApp": e_item.get("telefone", "Não informado"),
+                            "Nível / Experiência": e_item.get("experiencia_previa", "N/D"),
+                            "Status": "Lista de Espera"
+                        })
+                    st.dataframe(pd.DataFrame(dados_esp), use_container_width=True, hide_index=True)
+
+                    st.markdown("###### 📲 Contactar Alunas da Fila de Espera:")
+                    for idx, e_item in enumerate(lista_espera, 1):
+                        col_e_info, col_e_zap, col_e_prom, col_e_del = st.columns([3, 2, 2, 1])
+                        with col_e_info:
+                            st.markdown(f"**{idx}º Lugar:** {e_item.get('nome_aluna')}")
+                            st.caption(f"📱 WhatsApp: **{e_item.get('telefone')}**")
+                        with col_e_zap:
+                            # Botão prático com link do WhatsApp para contactar rapidamente quem está na fila
+                            msg_espera = (
+                                f"Olá, {e_item.get('nome_aluna')}! ✨ Aqui é da coordenação do *Studio Belleza & Arte*.\n\n"
+                                f"Você está na nossa *Lista de Espera* para o curso *{t_obj['nome_curso']}* (Início: {t_obj.get('data_inicio', '')}).\n\n"
+                                f"Surgiu uma vaga na turma! Como você é a próxima da fila, gostaríamos de saber se tem interesse em confirmar a sua matrícula agora."
+                            )
+                            link_zap_esp = f"https://api.whatsapp.com/send?phone=55{e_item.get('telefone')}&text={urllib.parse.quote(msg_espera)}"
+                            st.link_button("📲 Chamar no WhatsApp", link_zap_esp, use_container_width=True)
+                        with col_e_prom:
+                            if st.button("Promover p/ Vaga 🎓", key=f"prom_esp_{e_item['id']}", use_container_width=True, help="Promove a aluna da fila para a lista de matriculadas"):
+                                try:
+                                    try:
+                                        supabase.table("inscricoes_curso").update({
+                                            "status": "matriculada",
+                                            "tipo_vaga": "Titular",
+                                            "posicao_reserva": 0
+                                        }).eq("id", e_item["id"]).execute()
+                                    except Exception:
+                                        supabase.table("inscricoes_curso").update({"status": "matriculada"}).eq("id", e_item["id"]).execute()
+                                    st.toast(f"🎉 {e_item.get('nome_aluna')} promovida a Aluna Matriculada!")
                                     st.rerun()
-                            with b_rem:
-                                if st.button("Remover", key=f"btn_rem_al_{insc['id']}", use_container_width=True):
-                                    supabase.table("inscricoes_curso").delete().eq("id", insc["id"]).execute()
-                                    st.toast("Inscrição removida!")
+                                except Exception as e_prom:
+                                    st.error(f"Erro ao promover: {e_prom}")
+                        with col_e_del:
+                            if st.button("🗑️", key=f"del_esp_{e_item['id']}", use_container_width=True, help="Remover da lista de espera"):
+                                try:
+                                    supabase.table("inscricoes_curso").delete().eq("id", e_item["id"]).execute()
+                                    st.toast("Removida da lista de espera com sucesso!")
                                     st.rerun()
-                        st.write("")
+                                except Exception as e_del:
+                                    st.error(f"Erro ao remover: {e_del}")
 
             st.divider()
+
+            # 3. Formulário para Criar Nova Turma de Formação
             st.markdown("##### ➕ Criar Nova Turma de Formação")
             with st.form("form_nova_turma"):
                 c_t1, c_t2 = st.columns(2)
@@ -1152,18 +1302,21 @@ elif aba_selecionada == "🔐 Acesso Gestora":
 
             if btn_criar_turma:
                 if novo_curso_nome.strip() and novo_curso_inicio.strip():
-                    supabase.table("turmas_curso").insert({
-                        "nome_curso": novo_curso_nome.strip(),
-                        "data_inicio": novo_curso_inicio.strip(),
-                        "horario": novo_curso_horario.strip(),
-                        "vagas_limite": int(novo_curso_vagas),
-                        "preco_curso": float(novo_curso_preco),
-                        "status": "Aberta"
-                    }).execute()
-                    st.toast("Turma criada e liberada no site!")
-                    st.rerun()
+                    try:
+                        supabase.table("turmas_curso").insert({
+                            "nome_curso": novo_curso_nome.strip(),
+                            "data_inicio": novo_curso_inicio.strip(),
+                            "horario": novo_curso_horario.strip(),
+                            "vagas_limite": int(novo_curso_vagas),
+                            "preco_curso": float(novo_curso_preco),
+                            "status": "Aberta"
+                        }).execute()
+                        st.toast("Nova turma criada e liberada no site com sucesso!")
+                        st.rerun()
+                    except Exception as e_ct:
+                        st.error(f"Erro ao salvar nova turma no Supabase: {e_ct}")
                 else:
-                    st.error("Preencha o nome da formação e a data de início.")
+                    st.error("Preencha ao menos o nome da formação e a data de início.")
 
         # SUB-ABA 3: GERENCIAR SERVIÇOS
         with adm2:
