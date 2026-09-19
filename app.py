@@ -72,10 +72,10 @@ except Exception as e:
     st.stop()
 
 VALOR_SINAL = 20.00
-CHAVE_PIX = "21969861082"
-BENEFICIARIO = "Rafaella Aquino – Stone IP S.A"
+CHAVE_PIX = "71992999069"
+BENEFICIARIO = "Nome da Gestora do Salão – Stone IP S.A"
 LINK_CARTAO = "https://payment-link-v3.ton.com.br/pl_3dPKpGv5Zrb9l9aH6tjlw1agNjLX0m4D"
-WHATSAPP_NUMERO = "5521969861082"
+WHATSAPP_NUMERO = "99999999"
 
 if "servico_preselecionado" not in st.session_state:
     st.session_state["servico_preselecionado"] = None
